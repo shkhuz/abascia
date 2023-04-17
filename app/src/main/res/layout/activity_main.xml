@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/MainLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/grey"
+    android:gravity="top|left"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/errorView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="monospace"
+        android:paddingLeft="10dp"
+        android:paddingRight="10dp"
+        android:text="Abascia"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1.0"
+        android:fillViewport="true">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/stack"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+    </FrameLayout>
+
+    <com.shkhuz.abascia.CalculatorKeyLayout
+        android:id="@+id/keygrid"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_weight="0"
+        android:columnCount="5"
+        android:rowCount="5">
+
+        <Button
+            android:id="@+id/drop"
+            style="@style/CalculatorButtonSmallStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="DROP" />
+
+        <Button
+            android:id="@+id/swap"
+            style="@style/CalculatorButtonSmallStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="SWAP" />
+
+        <Button
+            android:id="@+id/recip"
+            style="@style/CalculatorButtonSmallStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="&#x215f;&#x2093;" />
+
+        <Button
+            android:id="@+id/sqrt"
+            style="@style/CalculatorButtonSmallStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="&#x221a;" />
+
+        <Button
+            android:id="@+id/pow2"
+            style="@style/CalculatorButtonSmallStyle"
+            android:onClick="clickHandler"
+            android:tag="&#x2093;&#x207F;"
+            android:text="&#x2093;&#xb2;" />
+
+        <Button
+            android:id="@+id/shift"
+            style="@style/CalculatorButtonSmallStyle"
+            android:backgroundTint="@color/dark_green"
+            android:onClick="clickHandler"
+            android:tag="SHIFT"
+            android:text="SHIFT" />
+
+        <Button
+            android:id="@+id/k7"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="7" />
+
+        <Button
+            android:id="@+id/k8"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="8" />
+
+        <Button
+            android:id="@+id/k9"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="9" />
+
+        <Button
+            android:id="@+id/div"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="&#x00F7;" />
+
+        <Button
+            android:id="@+id/del"
+            style="@style/CalculatorButtonSmallStyle"
+            android:onClick="clickHandler"
+            android:tag="CLR"
+            android:text="DEL" />
+
+        <Button
+            android:id="@+id/k4"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="4" />
+
+        <Button
+            android:id="@+id/k5"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="5" />
+
+        <Button
+            android:id="@+id/k6"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="6" />
+
+        <Button
+            android:id="@+id/mult"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="&#x00D7;" />
+
+        <Button
+            android:id="@+id/enter"
+            style="@style/CalculatorButtonSmallStyle"
+            android:layout_rowSpan="2"
+            android:onClick="clickHandler"
+            android:tag="S\nE\nT\nD\nP"
+            android:text="E&#x0a;N&#x0a;T&#x0a;E&#x0a;R" />
+
+        <Button
+            android:id="@+id/k1"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="1" />
+
+        <Button
+            android:id="@+id/k2"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="2" />
+
+        <Button
+            android:id="@+id/k3"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="3" />
+
+        <Button
+            android:id="@+id/minus"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="&#x2212;" />
+
+        <Button
+            android:id="@+id/k0"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="0" />
+
+        <Button
+            android:id="@+id/point"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="." />
+
+        <Button
+            android:id="@+id/chs"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="&#x00b1;" />
+
+        <Button
+            android:id="@+id/plus"
+            style="@style/CalculatorButtonLargeStyle"
+            android:onClick="clickHandler"
+            android:tag=""
+            android:text="+" />
+
+    </com.shkhuz.abascia.CalculatorKeyLayout>
+
+</LinearLayout>
