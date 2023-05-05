@@ -4,8 +4,8 @@ import java.math.BigDecimal;
 
 public class ViewModel {
     public String latex;
-    // Specifies last operation done on it. Uses id of operator buttons.
-    public int lastOp;
+    // Specifies last operation done on it.
+    public Main.Op lastOp;
     public BigDecimal val;
 
     public ViewModel() {
@@ -15,7 +15,7 @@ public class ViewModel {
 
     public ViewModel(final BigDecimal val) {
         this.latex = "";
-        this.lastOp = -1;
+        this.lastOp = Main.Op.none;
         this.val = val;
     }
 }

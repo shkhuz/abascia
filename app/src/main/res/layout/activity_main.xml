@@ -42,174 +42,179 @@
         android:rowCount="5">
 
         <Button
+            android:id="@+id/t1"
+            style="@style/CalculatorButtonSmallStyle"
+            android:onClick="clickHandler"
+            android:text="" />
+
+        <Button
+            android:id="@+id/t2"
+            style="@style/CalculatorButtonSmallStyle"
+            android:onClick="clickHandler"
+            android:text="" />
+
+        <Button
+            android:id="@+id/t3"
+            style="@style/CalculatorButtonSmallStyle"
+            android:onClick="clickHandler"
+            android:text="" />
+
+        <Button
+            android:id="@+id/t4"
+            style="@style/CalculatorButtonSmallStyle"
+            android:onClick="clickHandler"
+            android:text="" />
+
+        <Button
+            android:id="@+id/t5"
+            style="@style/CalculatorButtonSmallStyle"
+            android:onClick="clickHandler"
+            android:text="" />
+
+        <Button
             android:id="@+id/drop"
             style="@style/CalculatorButtonSmallStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="DROP" />
+            android:text="" />
 
         <Button
             android:id="@+id/swap"
             style="@style/CalculatorButtonSmallStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="SWAP" />
+            android:text="" />
 
         <Button
             android:id="@+id/recip"
             style="@style/CalculatorButtonSmallStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="&#x215f;&#x2093;" />
+            android:text="" />
 
         <Button
             android:id="@+id/sqrt"
             style="@style/CalculatorButtonSmallStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="&#x221a;" />
+            android:text="" />
 
         <Button
             android:id="@+id/pow2"
             style="@style/CalculatorButtonSmallStyle"
             android:onClick="clickHandler"
-            android:tag="&#x2093;&#x207F;"
-            android:text="&#x2093;&#xb2;" />
+            android:text="" />
 
         <Button
             android:id="@+id/shift"
             style="@style/CalculatorButtonSmallStyle"
-            android:backgroundTint="@color/dark_green"
             android:onClick="clickHandler"
-            android:tag="SHIFT"
-            android:text="SHIFT" />
+            android:text="" />
 
         <Button
             android:id="@+id/k7"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="7" />
+            android:text="" />
 
         <Button
             android:id="@+id/k8"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="8" />
+            android:text="" />
 
         <Button
             android:id="@+id/k9"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="9" />
+            android:text="" />
 
         <Button
             android:id="@+id/div"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="&#x00F7;" />
+            android:text="" />
 
         <Button
             android:id="@+id/del"
             style="@style/CalculatorButtonSmallStyle"
             android:onClick="clickHandler"
-            android:tag="CLR"
-            android:text="DEL" />
+            android:text="" />
 
         <Button
             android:id="@+id/k4"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="4" />
+            android:text="" />
 
         <Button
             android:id="@+id/k5"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="5" />
+            android:text="" />
 
         <Button
             android:id="@+id/k6"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="6" />
+            android:text="" />
 
         <Button
             android:id="@+id/mult"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="&#x00D7;" />
+            android:text="" />
 
         <Button
             android:id="@+id/enter"
             style="@style/CalculatorButtonSmallStyle"
             android:layout_rowSpan="2"
             android:onClick="clickHandler"
-            android:tag="S\nE\nT\nD\nP"
-            android:text="E&#x0a;N&#x0a;T&#x0a;E&#x0a;R" />
+            android:text="" />
 
         <Button
             android:id="@+id/k1"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="1" />
+            android:text="" />
 
         <Button
             android:id="@+id/k2"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="2" />
+            android:text="" />
 
         <Button
             android:id="@+id/k3"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="3" />
+            android:text="" />
 
         <Button
             android:id="@+id/minus"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="&#x2212;" />
+            android:text="" />
 
         <Button
             android:id="@+id/k0"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="0" />
+            android:text="" />
 
         <Button
             android:id="@+id/point"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="." />
+            android:text="" />
 
         <Button
             android:id="@+id/chs"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="&#x00b1;" />
+            android:text="" />
 
         <Button
             android:id="@+id/plus"
             style="@style/CalculatorButtonLargeStyle"
             android:onClick="clickHandler"
-            android:tag=""
-            android:text="+" />
+            android:text="" />
 
     </com.shkhuz.abascia.CalculatorKeyLayout>
 
