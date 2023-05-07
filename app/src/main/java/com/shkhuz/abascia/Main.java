@@ -1,20 +1,33 @@
 package com.shkhuz.abascia;
 
+import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
+import android.content.res.Resources;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.text.Html;
 import android.util.Log;
+import android.util.Pair;
+import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.NumberPicker;
 import android.widget.PopupMenu;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.text.HtmlCompat;
@@ -70,13 +83,18 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             0, 2, 5, 10, 15,
     };
 
+    public int vibration_millis_idx;
+    public int[] vibration_millis_values = {
+            20, 25, 30, 35, 40, 45, 50,
+    };
+
     private String[] normal_texts = {
             "", "", "", "", "",
-            "DROP", "SWAP", "&#x215f;&#x2093;", "&#x221a;", "&#x2093;&#xb2;",
-            "SHIFT", "7", "8", "9", "&#x00F7;",
-            "DEL", "4", "5", "6", "&#x00D7;",
-            "E<br>N<br>T<br>E<br>R", "1", "2", "3", "&#x2212;",
-                                     "0", ".", "&#x00b1;", "+",
+            "DROP", "SWAP", "<big>&#x215f;&#x2093;</big>", "<big>&#x221a;</big>", "<big>&#x2093;&#xb2;</big>",
+            "SHIFT", "7", "8", "9", "<big>&#x00F7;</big>",
+            "DEL", "4", "5", "6", "<big>&#x00D7;</big>",
+            "E<br>N<br>T<br>E<br>R", "1", "2", "3", "<big>&#x2212;</big>",
+                                     "0", ".", "&#x00b1;", "<big>+</big>",
     };
 
     private boolean[] normal_styles = {
@@ -90,7 +108,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
 
     private String[] shift_texts = {
             "⚙", "", "", "", "",
-            "", "", "", "", "&#x2093;&#x207F;",
+            "", "", "", "", "<big>&#x2093;&#x207F;</big>",
             "SHIFT", "π", "", "", "",
             "CLR", "", "", "", "",
             "", "", "", "", "",
@@ -175,6 +193,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         dispmode = dispmode_from_string(sharedPreferences.getString("Mode", "SCI"));
         tp_idx = sharedPreferences.getInt("TP", 3);
         dp_idx = sharedPreferences.getInt("DP", 1);
+        vibration_millis_idx = sharedPreferences.getInt("VibrationMillis", 1);
 
         updateState(State.normal);
     }
@@ -193,11 +212,16 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             return;
         }
         if (error == ErrorKind.EK_NONE)
-            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+            //view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+            vibrateWith(vibration_millis_values[vibration_millis_idx]);
 
         int number = CalculatorKeyLayout.getNumberFromButton(vid);
         if (number != -1) {
-            if (state == State.shift) {
+            if (state == State.normal) {
+                addElementIfNonVolatile();
+                input.append(number);
+                adapter.notifyItemChanged(volatile_idx);
+            } else if (state == State.shift) {
                 if (number == 7) {
                     PushResult p = validatePush();
                     if (validatePush() != PushResult.cannot_push) {
@@ -212,10 +236,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         binaryOp(Op.mul);
                     }
                 }
-            } else {
-                addElementIfNonVolatile();
-                input.append(number);
-                adapter.notifyItemChanged(volatile_idx);
+            } else if (state == State.settings) {
             }
         } else if (vid == R.id.point) {
             if (state == State.normal) {
@@ -259,10 +280,20 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             if (state == State.normal) {
             } else if (state == State.shift) {
             } else if (state == State.settings) {
-                if (dp_idx == dp_values.length-1) dp_idx = 0;
+                if (dp_idx == dp_values.length - 1) dp_idx = 0;
                 else dp_idx++;
 
                 spedit.putInt("DP", dp_idx);
+                spedit.apply();
+            }
+        } else if (vid == R.id.t5) {
+            if (state == State.normal) {
+            } else if (state == State.shift) {
+            } else if (state == State.settings) {
+                if (vibration_millis_idx == vibration_millis_values.length-1) vibration_millis_idx = 0;
+                else vibration_millis_idx++;
+
+                spedit.putInt("VibrationMillis", vibration_millis_idx);
                 spedit.apply();
             }
         } else if (vid == R.id.enter) {
@@ -428,6 +459,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             ((Button)findViewById(R.id.t2)).setText(String.format("Mode: %s", dispmode_string(dispmode)));
             ((Button)findViewById(R.id.t3)).setText(String.format("TP: %d", tp_values[tp_idx]));
             ((Button)findViewById(R.id.t4)).setText(String.format("DP: %d", dp_values[dp_idx]));
+            ((Button)findViewById(R.id.t5)).setText(String.format("Vibration: %dms", vibration_millis_values[vibration_millis_idx]));
             adapter.notifyItemRangeChanged(0, data.size());
 
             if (dispmode == DispMode.plain) ((Button)findViewById(R.id.t3)).setEnabled(false);
@@ -574,6 +606,12 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             if (input.indexOf(".") == 0 || input.indexOf("-.") == 0) {
                 input.insert(input.indexOf("-") != -1 ? 1 : 0, '0');
             }
+
+            int dotExpIdx = input.indexOf(".E");
+            if (dotExpIdx != -1) {
+                input.deleteCharAt(dotExpIdx);
+            }
+
             ViewModel m = data.get(volatile_idx);
             String repr = input.toString();
             if (repr.contains("E-")) {
@@ -671,6 +709,15 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             // cached resources.
             JLatexMathView view = new JLatexMathView(Main.this);
             view.setLatex("\\frac{a}{c}");
+        }
+    }
+
+    public void vibrateWith(int millis) {
+        Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            v.vibrate(VibrationEffect.createOneShot(millis, VibrationEffect.DEFAULT_AMPLITUDE));
+        } else {
+            v.vibrate(millis);
         }
     }
 

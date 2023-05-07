@@ -2,9 +2,11 @@ package com.shkhuz.abascia;
 
 import android.graphics.Color;
 import android.opengl.Visibility;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.NumberPicker;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -24,12 +26,10 @@ public class CustomAdapter extends RecyclerView.Adapter<CustomAdapter.ViewHolder
 
     public Stack<ViewModel> data;
     public Main main;
-    private NumberFormat formatter = new DecimalFormat("0.0E0");
 
     public CustomAdapter(final Stack<ViewModel> data, final Main main) {
         this.data = data;
         this.main = main;
-        this.formatter.setRoundingMode(RoundingMode.HALF_UP);
     }
 
     @NonNull
@@ -37,6 +37,17 @@ public class CustomAdapter extends RecyclerView.Adapter<CustomAdapter.ViewHolder
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.stack_item, parent, false);
         return new ViewHolder(view);
+    }
+
+    public int getBigDecimalDigits(BigDecimal b) {
+        if (b.scale() < 0) {
+            return b.precision() + (-b.scale());
+        }
+        return b.precision();
+    }
+
+    public int getBigDecimalDigitsToRight(BigDecimal b) {
+        return Math.max(b.scale(), 0);
     }
 
     @Override
@@ -48,12 +59,14 @@ public class CustomAdapter extends RecyclerView.Adapter<CustomAdapter.ViewHolder
             holder.mathView.setVisibility(View.GONE);
         } else {
             ViewModel m = data.get(position);
-            BigDecimal b = m.val;
+            BigDecimal b = m.val.stripTrailingZeros();
             String text;
-            int constrained_scale = Math.min(b.scale(), main.dp_values[main.dp_idx]);
-            if (Math.max(b.precision() - b.scale() + constrained_scale, constrained_scale) >
+            int constrained_scale = Math.min(getBigDecimalDigitsToRight(b), main.dp_values[main.dp_idx]);
+            if (Math.max(getBigDecimalDigits(b) - getBigDecimalDigitsToRight(b) + constrained_scale, constrained_scale) >
                     main.tp_values[main.tp_idx]
                     && main.dispmode == Main.DispMode.sci) {
+                NumberFormat formatter = new DecimalFormat("0.#E0");
+                formatter.setRoundingMode(RoundingMode.HALF_EVEN);
                 formatter.setMaximumFractionDigits(main.dp_values[main.dp_idx]);
                 text = formatter.format(b);
             } else {

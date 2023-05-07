@@ -39,13 +39,18 @@ public class CalculatorKeyLayout extends GridLayout {
     protected void onMeasure(final int widthMeasureSpec, final int heightMeasureSpec) {
         int width = MeasureSpec.getSize(widthMeasureSpec);
         int height = MeasureSpec.getSize(heightMeasureSpec);
-        resizeKeys(width);
+        Log.d("KEYGRID", String.format("width: %d, height: %d", width, height));
+        resizeKeys(width, height);
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
     }
 
-    private void resizeKeys(final int keyboardWidth) {
-        int keyw = keyboardWidth / 5;
+    private void resizeKeys(int width, int height) {
+        int keyw = width / 5;
         int keyh = keyw;
+        Log.d("KEYGRID", String.format("%d", keyw));
+        if (height < 1700) {
+            keyh = (int)((height - 200.0) / 7.0);
+        }
         for (int i = 0; i < getChildCount(); i++) {
             final Button key = (Button) getChildAt(i);
             final int kid = key.getId();
@@ -53,9 +58,11 @@ public class CalculatorKeyLayout extends GridLayout {
                 key.setHeight(keyh * 2);
             } else if (!isSmallHeightButton(kid)) {
                 key.setHeight(keyh);
+            } else {
+                key.setHeight((int)(keyh / 1.5));
             }
             key.setWidth(keyw);
-            if (isSmallHeightButton(kid) && !isSymbolButton(kid)) {
+            if (isSmallHeightButton(kid)) {
                 float size = key.getTextSize();
                 if (size > 32.0) {
                     key.setTextSize(TypedValue.COMPLEX_UNIT_PX, 32.0f);
