@@ -1,33 +1,17 @@
 package com.shkhuz.abascia;
 
 import android.content.Context;
-import android.content.DialogInterface;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
-import android.content.res.Resources;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
-import android.text.Html;
-import android.util.Log;
-import android.util.Pair;
-import android.view.Gravity;
-import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
-import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
-import android.widget.FrameLayout;
-import android.widget.LinearLayout;
-import android.widget.NumberPicker;
-import android.widget.PopupMenu;
-import android.widget.RelativeLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.text.HtmlCompat;
@@ -58,6 +42,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     private CustomAdapter adapter;
     public StringBuffer input;
     public TextView errorView;
+    public TextView anglemodeTextView;
     private ErrorKind error = ErrorKind.EK_NONE;
     public int volatile_idx = -1;
     public final int INTERNAL_SCALE = 32;
@@ -76,6 +61,12 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     private static final int ROUNDING_MODE = BigDecimal.ROUND_HALF_EVEN;
     private static final int SCALE = 18;
 
+    private Button sinButton;
+    private Button cosButton;
+    private Button tanButton;
+    private Button lnButton;
+    private Button logButton;
+
     public AngleMode anglemode;
     public DispMode dispmode;
 
@@ -91,7 +82,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
 
     public int vibration_millis_idx;
     public int[] vibration_millis_values = {
-            20, 25, 30, 35, 40, 45, 50,
+            0, 20, 25, 30, 35, 40, 45, 50,
     };
 
     private String[] normal_texts = {
@@ -106,16 +97,16 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     private boolean[] normal_styles = {
             false, false, false, false, false,
             false, false, false, false, false,
-            false, true, true, true, true,
-            false, true, true, true, true,
-            false, true, true, true, true,
-                  true, true, true, true,
+            false, true,  true,  true,  true,
+            false, true,  true,  true,  true,
+            false, true,  true,  true,  true,
+                   true,  true,  true,  true,
     };
 
     private String[] shift_texts = {
             "", "", "", "", "",
             "", "", "", "", "<big>&#x2093;&#x207F;</big>"/*x^n*/,
-            "SHIFT", "<big>&#x2093;&#xb3;</big>"/*x^3*/, "<big>&#x221B;</big>"/*cuberoot*/, "", "",
+            "SHIFT", "&#x2093;&#xb3;"/*x^3*/, "&#x221B;"/*cuberoot*/, "", "",
             "CLR", "", "", "", "",
             "&#x2699;"/*gear*/, "&#x3C0;"/*pi*/, "e", "", "",
                 "", "", "", "",
@@ -124,9 +115,9 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     private boolean[] shift_styles = {
             false, false, false, false, false,
             false, false, false, false, false,
-            false, true, true, false, false,
+            false, true,  true,  false, false,
             false, false, false, false, false,
-            false, true, true, false, false,
+            false, true,  true,  false, false,
                    false, false, false, false,
     };
 
@@ -186,6 +177,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         this.adapter = new CustomAdapter(data, this);
         this.stackview.setAdapter(this.adapter);
         this.errorView = findViewById(R.id.errorView);
+        this.anglemodeTextView = findViewById(R.id.anglemodeTextView);
 
         this.input = new StringBuffer(32);
         this.keyshift = findViewById(R.id.shift);
@@ -196,11 +188,19 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         this.sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
         this.spedit = sharedPreferences.edit();
 
+        this.sinButton = (Button)findViewById(R.id.sin);
+        this.cosButton = (Button)findViewById(R.id.cos);
+        this.tanButton = (Button)findViewById(R.id.tan);
+        this.lnButton = (Button)findViewById(R.id.ln);
+        this.logButton = (Button)findViewById(R.id.log);
+
         anglemode = anglemode_from_string(sharedPreferences.getString("AngleMode", "DEG"));
         dispmode = dispmode_from_string(sharedPreferences.getString("DisplayMode", "SCI"));
         tp_idx = sharedPreferences.getInt("TP", 3);
         dp_idx = sharedPreferences.getInt("DP", 1);
         vibration_millis_idx = sharedPreferences.getInt("VibrationMillis", 1);
+
+        anglemodeTextView.setText(anglemode_string(anglemode));
 
         updateState(State.normal);
     }
@@ -218,8 +218,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
             return;
         }
-        if (error == ErrorKind.EK_NONE)
-            //view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+        if (error == ErrorKind.EK_NONE && vibration_millis_values[vibration_millis_idx] != 0)
             vibrateWith(vibration_millis_values[vibration_millis_idx]);
 
         int number = CalculatorKeyLayout.getNumberFromButton(vid);
@@ -304,8 +303,8 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
+                        if (n.lastOp != Op.none) addParams(n);
                         n.lastOp = op_from_id(vid);
-                        addParams(n);
                         if (anglemode == AngleMode.degrees) {
                             n.latex = "\\sin^{\\circ}{" + n.latex + "}";
                             n.val = BigDecimalMath.sin(BigDecimalMath.toRadians(n.val, mc), mc);
@@ -333,8 +332,8 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
+                        if (n.lastOp != Op.none) addParams(n);
                         n.lastOp = op_from_id(vid);
-                        addParams(n);
                         if (anglemode == AngleMode.degrees) {
                             n.latex = "\\cos^{\\circ}{" + n.latex + "}";
                             n.val = BigDecimalMath.cos(BigDecimalMath.toRadians(n.val, mc), mc);
@@ -358,6 +357,25 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.tan) {
             if (state == State.normal) {
+                if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                    ViewModel n = data.pop();
+                    notifyAdapterItemRemoved(data.size() - 1);
+                    try {
+                        if (n.lastOp != Op.none) addParams(n);
+                        n.lastOp = op_from_id(vid);
+                        if (anglemode == AngleMode.degrees) {
+                            n.latex = "\\tan^{\\circ}{" + n.latex + "}";
+                            n.val = BigDecimalMath.tan(BigDecimalMath.toRadians(n.val, mc), mc);
+                        } else if (anglemode == AngleMode.radians) {
+                            n.latex = "\\tan{" + n.latex + "}";
+                            n.val = BigDecimalMath.tan(n.val, mc);
+                        }
+                        data.push(n);
+                        adapter.notifyItemInserted(data.size() - 1);
+                    } catch (RuntimeException e) {
+                        showOnStackError(e.getMessage());
+                    }
+                }
             } else if (state == State.shift) {
             } else if (state == State.settings) {
                 if (tp_idx == tp_values.length-1) tp_idx = 0;
@@ -368,6 +386,20 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.ln) {
             if (state == State.normal) {
+                if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                    ViewModel n = data.pop();
+                    notifyAdapterItemRemoved(data.size() - 1);
+                    try {
+                        if (n.lastOp != Op.none) addParams(n);
+                        n.lastOp = op_from_id(vid);
+                        n.latex = "\\ln{" + n.latex + "}";
+                        n.val = BigDecimalMath.log(n.val, mc);
+                        data.push(n);
+                        adapter.notifyItemInserted(data.size() - 1);
+                    } catch (RuntimeException e) {
+                        showOnStackError(e.getMessage());
+                    }
+                }
             } else if (state == State.shift) {
             } else if (state == State.settings) {
                 if (dp_idx == dp_values.length - 1) dp_idx = 0;
@@ -378,6 +410,20 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.log) {
             if (state == State.normal) {
+                if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                    ViewModel n = data.pop();
+                    notifyAdapterItemRemoved(data.size() - 1);
+                    try {
+                        if (n.lastOp != Op.none) addParams(n);
+                        n.lastOp = op_from_id(vid);
+                        n.latex = "\\log{" + n.latex + "}";
+                        n.val = BigDecimalMath.log10(n.val, mc);
+                        data.push(n);
+                        adapter.notifyItemInserted(data.size() - 1);
+                    } catch (RuntimeException e) {
+                        showOnStackError(e.getMessage());
+                    }
+                }
             } else if (state == State.shift) {
             } else if (state == State.settings) {
                 if (vibration_millis_idx == vibration_millis_values.length-1) vibration_millis_idx = 0;
@@ -406,12 +452,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     ViewModel n = data.get(data.size()-1);
                     if (n.latex.startsWith("-")) {
                         StringBuilder s = new StringBuilder(n.latex).deleteCharAt(0);
-//                        if (s.indexOf("\\left(") == 0 && n.latex.endsWith("\\right)")) {
-//                            s.delete(0, 6);
-//                            s.delete(s.length()-7, s.length());
-//                        }
                         n.latex = s.toString();
-//                        n.lastOp = ;
                     } else {
                         if (n.lastOp == Op.add || n.lastOp == Op.sub) {
                             addParamsIfNeeded(n, op_from_id(vid), false);
@@ -523,6 +564,19 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             } else if (state == State.shift) {
             } else if (state == State.settings) {
             }
+        } else if (vid == R.id.swap) {
+            if (state == State.normal) {
+                if (validatePush() != PushResult.cannot_push && data.size() > 1) {
+                    ViewModel n1 = data.pop();
+                    ViewModel n2 = data.pop();
+                    notifyAdapterItemRangeRemoved(data.size() - 2, 2);
+                    data.push(n1);
+                    data.push(n2);
+                    adapter.notifyItemRangeInserted(data.size() - 1, 2);
+                }
+            } else if (state == State.shift) {
+            } else if (state == State.settings) {
+            }
         }
 
         // Transition state changes
@@ -547,33 +601,21 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 else keypoint.setText(".");
             }
         } else if (state == State.settings) {
-            ((Button)findViewById(R.id.sin)).setText(String.format("%s", anglemode_string(anglemode)));
-            ((Button)findViewById(R.id.cos)).setText(String.format("Mode: %s", dispmode_string(dispmode)));
-            ((Button)findViewById(R.id.tan)).setText(String.format("TP: %d", tp_values[tp_idx]));
-            ((Button)findViewById(R.id.ln)).setText(String.format("DP: %d", dp_values[dp_idx]));
-            ((Button)findViewById(R.id.log)).setText(String.format("Vibration: %dms", vibration_millis_values[vibration_millis_idx]));
+            String anglemodestr = anglemode_string(anglemode);
+            sinButton.setText(String.format("%s", anglemodestr));
+            anglemodeTextView.setText(anglemodestr);
+            cosButton.setText(String.format("Mode: %s", dispmode_string(dispmode)));
+            tanButton.setText(String.format("TP: %d", tp_values[tp_idx]));
+            lnButton.setText(String.format("DP: %d", dp_values[dp_idx]));
+            logButton.setText(String.format("Vibration: %dms", vibration_millis_values[vibration_millis_idx]));
             adapter.notifyItemRangeChanged(0, data.size());
 
-            ((Button)findViewById(R.id.tan)).setEnabled(dispmode != DispMode.plain);
+            tanButton.setEnabled(dispmode != DispMode.plain);
         }
 
         // if Ek.OnStackError then scroll to error position
         stackview.scrollToPosition(data.size() - 1);
     }
-
-//    private void setDP() {
-//        if (validatePush() != PushResult.cannot_push && data.size() > 0) {
-//            BigDecimal n = data.pop().val;
-//            notifyAdapterItemRemoved(data.size()-1);
-//            int nint = n.intValue();
-//            if (nint < INTERNAL_SCALE) {
-//                display_scale = nint;
-//                adapter.notifyItemRangeChanged(0, data.size());
-//            } else {
-//                showOnStackError(String.format("Display scale must be less than %d", INTERNAL_SCALE));
-//            }
-//        }
-//    }
 
     private void binaryOp(Op op) {
         if (validatePush() != PushResult.cannot_push && data.size() > 1) {
@@ -892,74 +934,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         } while (term.compareTo(tolerance) > 0);
 
         return x.setScale(scale, BigDecimal.ROUND_HALF_EVEN);
-    }
-
-    public static BigDecimal cosine(BigDecimal x) {
-        BigDecimal currentValue = BigDecimal.ONE;
-        BigDecimal lastVal = currentValue.add(BigDecimal.ONE);
-        BigDecimal xSquared = x.multiply(x);
-        BigDecimal numerator = BigDecimal.ONE;
-        BigDecimal denominator = BigDecimal.ONE;
-        int i = 0;
-
-        while (lastVal.compareTo(currentValue) != 0) {
-            lastVal = currentValue;
-
-            int z = 2 * i + 2;
-
-            denominator = denominator.multiply(BigDecimal.valueOf(z));
-            denominator = denominator.multiply(BigDecimal.valueOf(z - 1));
-            numerator = numerator.multiply(xSquared);
-
-            BigDecimal term = numerator.divide(denominator, SCALE + 5, ROUNDING_MODE);
-
-            if (i % 2 == 0) {
-                currentValue = currentValue.subtract(term);
-            } else {
-                currentValue = currentValue.add(term);
-            }
-            i++;
-        }
-
-        return currentValue;
-    }
-
-    public static BigDecimal sine(BigDecimal x) {
-        BigDecimal lastVal = x.add(BigDecimal.ONE);
-        BigDecimal currentValue = x;
-        BigDecimal xSquared = x.multiply(x);
-        BigDecimal numerator = x;
-        BigDecimal denominator = BigDecimal.ONE;
-        int i = 0;
-
-        while (lastVal.compareTo(currentValue) != 0) {
-            lastVal = currentValue;
-
-            int z = 2 * i + 3;
-
-            denominator = denominator.multiply(BigDecimal.valueOf(z));
-            denominator = denominator.multiply(BigDecimal.valueOf(z - 1));
-            numerator = numerator.multiply(xSquared);
-
-            BigDecimal term = numerator.divide(denominator, SCALE + 5, ROUNDING_MODE);
-
-            if (i % 2 == 0) {
-                currentValue = currentValue.subtract(term);
-            } else {
-                currentValue = currentValue.add(term);
-            }
-
-            i++;
-        }
-        return currentValue;
-    }
-
-    public static BigDecimal tangent(BigDecimal x) {
-
-        BigDecimal sin = sine(x);
-        BigDecimal cos = cosine(x);
-
-        return sin.divide(cos, SCALE, BigDecimal.ROUND_HALF_UP);
     }
 
     public static BigDecimal log10(BigDecimal b) {

@@ -8,17 +8,37 @@
     android:gravity="top|left"
     android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/errorView"
+    <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:fontFamily="monospace"
-        android:paddingLeft="10dp"
-        android:paddingRight="10dp"
-        android:text="Abascia"
-        android:textColor="#FFFFFF"
-        android:textSize="20sp"
-        android:textStyle="bold" />
+        android:orientation="horizontal"
+        android:id="@+id/relativeLayout">
+
+        <TextView
+            android:id="@+id/errorView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentStart="true"
+            android:fontFamily="monospace"
+            android:paddingStart="10dp"
+            android:text="Abascia"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/anglemodeTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:fontFamily="monospace"
+            android:paddingEnd="10dp"
+            android:text="PLACE"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+    </RelativeLayout>
 
     <FrameLayout
         android:layout_width="match_parent"
