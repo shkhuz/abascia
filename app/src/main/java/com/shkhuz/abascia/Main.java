@@ -44,6 +44,8 @@ import java.util.Stack;
 
 import ru.noties.jlatexmath.JLatexMathView;
 
+import ch.obermuhlner.math.big.BigDecimalMath;
+
 enum State {
     shift,
     normal,
@@ -59,6 +61,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     private ErrorKind error = ErrorKind.EK_NONE;
     public int volatile_idx = -1;
     public final int INTERNAL_SCALE = 32;
+    private final MathContext mc = new MathContext(32, RoundingMode.HALF_EVEN);
     private State state = State.normal;
     private boolean isDecPresent = false;
     private boolean isExpPresent = false;
@@ -70,7 +73,10 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     private ColorStateList default_button_color;
     private SharedPreferences sharedPreferences;
     private SharedPreferences.Editor spedit;
+    private static final int ROUNDING_MODE = BigDecimal.ROUND_HALF_EVEN;
+    private static final int SCALE = 18;
 
+    public AngleMode anglemode;
     public DispMode dispmode;
 
     public int tp_idx;
@@ -89,12 +95,12 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     };
 
     private String[] normal_texts = {
-            "", "", "", "", "",
-            "DROP", "SWAP", "<big>&#x215f;&#x2093;</big>", "<big>&#x221a;</big>", "<big>&#x2093;&#xb2;</big>",
-            "SHIFT", "7", "8", "9", "<big>&#x00F7;</big>",
-            "DEL", "4", "5", "6", "<big>&#x00D7;</big>",
-            "E<br>N<br>T<br>E<br>R", "1", "2", "3", "<big>&#x2212;</big>",
-                                     "0", ".", "&#x00b1;", "<big>+</big>",
+            "SIN", "COS", "TAN", "LN", "LOG",
+            "DROP", "SWAP", "<big>&#x215f;&#x2093;</big>"/*1/x*/, "<big>&#x221a;</big>"/*sqrt*/, "<big>&#x2093;&#xb2;</big>"/*x^2*/,
+            "SHIFT", "7", "8", "9", "<big>&#x00F7;</big>"/*div*/,
+            "DEL", "4", "5", "6", "<big>&#x00D7;</big>"/*star*/,
+            "E<br>N<br>T<br>E<br>R", "1", "2", "3", "<big>&#x2212;</big>"/*minus*/,
+                                     "0", ".", "&#x00b1;"/*plusminus*/, "<big>+</big>",
     };
 
     private boolean[] normal_styles = {
@@ -107,29 +113,29 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     };
 
     private String[] shift_texts = {
-            "⚙", "", "", "", "",
-            "", "", "", "", "<big>&#x2093;&#x207F;</big>",
-            "SHIFT", "π", "", "", "",
-            "CLR", "", "", "", "",
             "", "", "", "", "",
+            "", "", "", "", "<big>&#x2093;&#x207F;</big>"/*x^n*/,
+            "SHIFT", "<big>&#x2093;&#xb3;</big>"/*x^3*/, "<big>&#x221B;</big>"/*cuberoot*/, "", "",
+            "CLR", "", "", "", "",
+            "&#x2699;"/*gear*/, "&#x3C0;"/*pi*/, "e", "", "",
                 "", "", "", "",
     };
 
     private boolean[] shift_styles = {
             false, false, false, false, false,
             false, false, false, false, false,
-            false, true, false, false, false,
+            false, true, true, false, false,
             false, false, false, false, false,
-            false, false, false, false, false,
+            false, true, true, false, false,
                    false, false, false, false,
     };
 
     private String[] settings_texts = {
-            "BACK", "", "", "", "",
             "", "", "", "", "",
             "", "", "", "", "",
             "", "", "", "", "",
             "", "", "", "", "",
+            "B<br>A<br>C<br>K", "", "", "", "",
                 "", "", "", "",
     };
 
@@ -190,7 +196,8 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         this.sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
         this.spedit = sharedPreferences.edit();
 
-        dispmode = dispmode_from_string(sharedPreferences.getString("Mode", "SCI"));
+        anglemode = anglemode_from_string(sharedPreferences.getString("AngleMode", "DEG"));
+        dispmode = dispmode_from_string(sharedPreferences.getString("DisplayMode", "SCI"));
         tp_idx = sharedPreferences.getInt("TP", 3);
         dp_idx = sharedPreferences.getInt("DP", 1);
         vibration_millis_idx = sharedPreferences.getInt("VibrationMillis", 1);
@@ -222,18 +229,60 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 input.append(number);
                 adapter.notifyItemChanged(volatile_idx);
             } else if (state == State.shift) {
-                if (number == 7) {
+                if (number == 1) {
                     PushResult p = validatePush();
                     if (validatePush() != PushResult.cannot_push) {
                         addElementIfNonVolatile();
                         volatile_idx = -1;
-                        ViewModel m = data.get(data.size()-1);
+                        ViewModel m = data.get(data.size() - 1);
                         m.val = new BigDecimal(Math.PI);
                         m.latex = "π";
-                        adapter.notifyItemChanged(data.size()-1);
+                        adapter.notifyItemChanged(data.size() - 1);
                     }
                     if (p == PushResult.pushed) {
                         binaryOp(Op.mul);
+                    }
+                } else if (number == 2) {
+                    PushResult p = validatePush();
+                    if (validatePush() != PushResult.cannot_push) {
+                        addElementIfNonVolatile();
+                        volatile_idx = -1;
+                        ViewModel m = data.get(data.size() - 1);
+                        m.val = new BigDecimal(Math.E);
+                        m.latex = "e";
+                        adapter.notifyItemChanged(data.size() - 1);
+                    }
+                    if (p == PushResult.pushed) {
+                        binaryOp(Op.mul);
+                    }
+                } else if (number == 7) {
+                    if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                        ViewModel n = data.pop();
+                        notifyAdapterItemRemoved(data.size() - 1);
+                        try {
+                            if (n.lastOp != Op.none) addParams(n);
+                            n.lastOp = op_from_id(vid);
+                            n.latex = n.latex + "^{3}";
+                            n.val = n.val.pow(3);
+                            data.push(n);
+                            adapter.notifyItemInserted(data.size() - 1);
+                        } catch (RuntimeException e) {
+                            showOnStackError(e.getMessage());
+                        }
+                    }
+                } else if (number == 8) {
+                    if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                        ViewModel n = data.pop();
+                        notifyAdapterItemRemoved(data.size() - 1);
+                        try {
+                            n.lastOp = op_from_id(vid);
+                            n.latex = "\\sqrt[3]{" + n.latex + "}";
+                            n.val = intRoot(n.val, 3, INTERNAL_SCALE);
+                            data.push(n);
+                            adapter.notifyItemInserted(data.size() - 1);
+                        } catch (RuntimeException e) {
+                            showOnStackError(e.getMessage());
+                        }
                     }
                 }
             } else if (state == State.settings) {
@@ -249,24 +298,65 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             } else if (state == State.shift) {
             } else if (state == State.settings) {
             }
-        } else if (vid == R.id.t1) {
+        } else if (vid == R.id.sin) {
             if (state == State.normal) {
+                if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                    ViewModel n = data.pop();
+                    notifyAdapterItemRemoved(data.size() - 1);
+                    try {
+                        n.lastOp = op_from_id(vid);
+                        addParams(n);
+                        if (anglemode == AngleMode.degrees) {
+                            n.latex = "\\sin^{\\circ}{" + n.latex + "}";
+                            n.val = BigDecimalMath.sin(BigDecimalMath.toRadians(n.val, mc), mc);
+                        } else if (anglemode == AngleMode.radians) {
+                            n.latex = "\\sin{" + n.latex + "}";
+                            n.val = BigDecimalMath.sin(n.val, mc);
+                        }
+                        data.push(n);
+                        adapter.notifyItemInserted(data.size() - 1);
+                    } catch (RuntimeException e) {
+                        showOnStackError(e.getMessage());
+                    }
+                }
             } else if (state == State.shift) {
-                updateState(State.settings);
             } else if (state == State.settings) {
-                updateState(State.normal);
+                if (anglemode == AngleMode.degrees) anglemode = AngleMode.radians;
+                else anglemode = AngleMode.degrees;
+
+                spedit.putString("AngleMode", anglemode_string(anglemode));
+                spedit.apply();
             }
-        } else if (vid == R.id.t2) {
+        } else if (vid == R.id.cos) {
             if (state == State.normal) {
+                if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                    ViewModel n = data.pop();
+                    notifyAdapterItemRemoved(data.size() - 1);
+                    try {
+                        n.lastOp = op_from_id(vid);
+                        addParams(n);
+                        if (anglemode == AngleMode.degrees) {
+                            n.latex = "\\cos^{\\circ}{" + n.latex + "}";
+                            n.val = BigDecimalMath.cos(BigDecimalMath.toRadians(n.val, mc), mc);
+                        } else if (anglemode == AngleMode.radians) {
+                            n.latex = "\\cos{" + n.latex + "}";
+                            n.val = BigDecimalMath.cos(n.val, mc);
+                        }
+                        data.push(n);
+                        adapter.notifyItemInserted(data.size() - 1);
+                    } catch (RuntimeException e) {
+                        showOnStackError(e.getMessage());
+                    }
+                }
             } else if (state == State.shift) {
             } else if (state == State.settings) {
                 if (dispmode == DispMode.plain) dispmode = DispMode.sci;
                 else dispmode = DispMode.plain;
 
-                spedit.putString("Mode", dispmode_string(dispmode));
+                spedit.putString("DisplayMode", dispmode_string(dispmode));
                 spedit.apply();
             }
-        } else if (vid == R.id.t3) {
+        } else if (vid == R.id.tan) {
             if (state == State.normal) {
             } else if (state == State.shift) {
             } else if (state == State.settings) {
@@ -276,7 +366,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 spedit.putInt("TP", tp_idx);
                 spedit.apply();
             }
-        } else if (vid == R.id.t4) {
+        } else if (vid == R.id.ln) {
             if (state == State.normal) {
             } else if (state == State.shift) {
             } else if (state == State.settings) {
@@ -286,7 +376,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 spedit.putInt("DP", dp_idx);
                 spedit.apply();
             }
-        } else if (vid == R.id.t5) {
+        } else if (vid == R.id.log) {
             if (state == State.normal) {
             } else if (state == State.shift) {
             } else if (state == State.settings) {
@@ -300,9 +390,10 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             if (state == State.normal) {
                 validatePush();
             } else if (state == State.shift) {
+                updateState(State.settings);
             } else if (state == State.settings) {
+                updateState(State.normal);
             }
-
         } else if ((vid == R.id.plus || vid == R.id.minus || vid == R.id.mult || vid == R.id.div)) {
             if (state == State.normal) {
                 binaryOp(op_from_id(vid));
@@ -456,14 +547,14 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 else keypoint.setText(".");
             }
         } else if (state == State.settings) {
-            ((Button)findViewById(R.id.t2)).setText(String.format("Mode: %s", dispmode_string(dispmode)));
-            ((Button)findViewById(R.id.t3)).setText(String.format("TP: %d", tp_values[tp_idx]));
-            ((Button)findViewById(R.id.t4)).setText(String.format("DP: %d", dp_values[dp_idx]));
-            ((Button)findViewById(R.id.t5)).setText(String.format("Vibration: %dms", vibration_millis_values[vibration_millis_idx]));
+            ((Button)findViewById(R.id.sin)).setText(String.format("%s", anglemode_string(anglemode)));
+            ((Button)findViewById(R.id.cos)).setText(String.format("Mode: %s", dispmode_string(dispmode)));
+            ((Button)findViewById(R.id.tan)).setText(String.format("TP: %d", tp_values[tp_idx]));
+            ((Button)findViewById(R.id.ln)).setText(String.format("DP: %d", dp_values[dp_idx]));
+            ((Button)findViewById(R.id.log)).setText(String.format("Vibration: %dms", vibration_millis_values[vibration_millis_idx]));
             adapter.notifyItemRangeChanged(0, data.size());
 
-            if (dispmode == DispMode.plain) ((Button)findViewById(R.id.t3)).setEnabled(false);
-            else ((Button)findViewById(R.id.t3)).setEnabled(true);
+            ((Button)findViewById(R.id.tan)).setEnabled(dispmode != DispMode.plain);
         }
 
         // if Ek.OnStackError then scroll to error position
@@ -496,9 +587,9 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     addParamsIfNeeded(n2, op, false);
                 }
                 n1.lastOp = op;
-                if (op == Op.add) { n1.val = n1.val.add(n2.val);                           n1.latex = n1.latex + "+" + n2.latex; }
+                if (op == Op.add) { n1.val = n1.val.add(n2.val);                          n1.latex = n1.latex + "+" + n2.latex; }
                 else if (op == Op.sub) { n1.val = n1.val.subtract(n2.val);                n1.latex = n1.latex + "-" + n2.latex; }
-                else if (op == Op.mul) { n1.val = n1.val.multiply(n2.val);                 n1.latex = n1.latex + "\\cdot" + n2.latex; }
+                else if (op == Op.mul) { n1.val = n1.val.multiply(n2.val);                n1.latex = n1.latex + "\\cdot " + n2.latex; }
                 else { n1.val = n1.val.divide(n2.val, INTERNAL_SCALE, RoundingMode.HALF_EVEN); n1.latex = "\\frac{" + n1.latex + "}{" + n2.latex + "}"; }
                 data.push(n1);
                 adapter.notifyItemInserted(data.size() - 1);
@@ -528,7 +619,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     private void updateState(State value) {
         state = value;
         if (state == State.normal) {
-            ((Button)findViewById(R.id.t3)).setEnabled(true);
+            ((Button)findViewById(R.id.tan)).setEnabled(true);
             for (int i = 0; i < keygrid.getChildCount(); i++) {
                 final Button b = (Button) keygrid.getChildAt(i);
                 b.setText(HtmlCompat.fromHtml(normal_texts[i], HtmlCompat.FROM_HTML_MODE_LEGACY));
@@ -681,6 +772,348 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     }
 
     /**
+     * Compute x^exponent to a given scale. Uses the same algorithm as class
+     * numbercruncher.mathutils.IntPower.
+     *
+     * @param x the value x
+     * @param exponent the exponent value
+     * @param scale the desired scale of the result
+     * @return the result value
+     */
+    public static BigDecimal intPower(BigDecimal x, long exponent, int scale) {
+        // If the exponent is negative, compute 1/(x^-exponent).
+        if (exponent < 0) {
+            return BigDecimal.valueOf(1)
+                    .divide(intPower(x, -exponent, scale), scale, BigDecimal.ROUND_HALF_EVEN);
+        }
+
+        BigDecimal power = BigDecimal.valueOf(1);
+
+        // Loop to compute value^exponent.
+        while (exponent > 0) {
+
+            // Is the rightmost bit a 1?
+            if ((exponent & 1) == 1) {
+                power = power.multiply(x).setScale(scale, BigDecimal.ROUND_HALF_EVEN);
+            }
+
+            // Square x and shift exponent 1 bit to the right.
+            x = x.multiply(x).setScale(scale, BigDecimal.ROUND_HALF_EVEN);
+            exponent >>= 1;
+
+            Thread.yield();
+        }
+
+        return power;
+    }
+
+    /**
+     * Compute the integral root of x to a given scale, x >= 0.
+     * Use Newton's algorithm.
+     * @param x the value of x
+     * @param index the integral root value
+     * @param scale the desired scale of the result
+     * @return the result value
+     */
+    public static BigDecimal intRoot(BigDecimal x, long index,
+                                     int scale)
+    {
+        // Check that x >= 0.
+        if (x.signum() < 0) {
+            throw new IllegalArgumentException("x < 0");
+        }
+
+        int        sp1 = scale + 1;
+        BigDecimal n   = x;
+        BigDecimal i   = BigDecimal.valueOf(index);
+        BigDecimal im1 = BigDecimal.valueOf(index-1);
+        BigDecimal tolerance = BigDecimal.valueOf(5)
+                .movePointLeft(sp1);
+        BigDecimal xPrev;
+
+        // The initial approximation is x/index.
+        x = x.divide(i, scale, BigDecimal.ROUND_HALF_EVEN);
+
+        // Loop until the approximations converge
+        // (two successive approximations are equal after rounding).
+        do {
+            // x^(index-1)
+            BigDecimal xToIm1 = intPower(x, index-1, sp1);
+
+            // x^index
+            BigDecimal xToI =
+                    x.multiply(xToIm1)
+                            .setScale(sp1, BigDecimal.ROUND_HALF_EVEN);
+
+            // n + (index-1)*(x^index)
+            BigDecimal numerator =
+                    n.add(im1.multiply(xToI))
+                            .setScale(sp1, BigDecimal.ROUND_HALF_EVEN);
+
+            // (index*(x^(index-1))
+            BigDecimal denominator =
+                    i.multiply(xToIm1)
+                            .setScale(sp1, BigDecimal.ROUND_HALF_EVEN);
+
+            // x = (n + (index-1)*(x^index)) / (index*(x^(index-1)))
+            xPrev = x;
+            x = numerator
+                    .divide(denominator, sp1, BigDecimal.ROUND_DOWN);
+
+            Thread.yield();
+        } while (x.subtract(xPrev).abs().compareTo(tolerance) > 0);
+
+        return x;
+    }
+
+    /* Compute the natural logarithm of x to a given scale, x > 0. Use Newton's algorithm. */
+    private static BigDecimal lnNewton(BigDecimal x, int scale) {
+        int sp1 = scale + 1;
+        BigDecimal n = x;
+        BigDecimal term;
+
+        // Convergence tolerance = 5*(10^-(scale+1))
+        BigDecimal tolerance = BigDecimal.valueOf(5).movePointLeft(sp1);
+
+        // Loop until the approximations converge
+        // (two successive approximations are within the tolerance).
+        do {
+
+            // e^x
+            BigDecimal eToX = exp(x, sp1);
+
+            // (e^x - n)/e^x
+            term = eToX.subtract(n).divide(eToX, sp1, BigDecimal.ROUND_DOWN);
+
+            // x - (e^x - n)/e^x
+            x = x.subtract(term);
+
+            Thread.yield();
+        } while (term.compareTo(tolerance) > 0);
+
+        return x.setScale(scale, BigDecimal.ROUND_HALF_EVEN);
+    }
+
+    public static BigDecimal cosine(BigDecimal x) {
+        BigDecimal currentValue = BigDecimal.ONE;
+        BigDecimal lastVal = currentValue.add(BigDecimal.ONE);
+        BigDecimal xSquared = x.multiply(x);
+        BigDecimal numerator = BigDecimal.ONE;
+        BigDecimal denominator = BigDecimal.ONE;
+        int i = 0;
+
+        while (lastVal.compareTo(currentValue) != 0) {
+            lastVal = currentValue;
+
+            int z = 2 * i + 2;
+
+            denominator = denominator.multiply(BigDecimal.valueOf(z));
+            denominator = denominator.multiply(BigDecimal.valueOf(z - 1));
+            numerator = numerator.multiply(xSquared);
+
+            BigDecimal term = numerator.divide(denominator, SCALE + 5, ROUNDING_MODE);
+
+            if (i % 2 == 0) {
+                currentValue = currentValue.subtract(term);
+            } else {
+                currentValue = currentValue.add(term);
+            }
+            i++;
+        }
+
+        return currentValue;
+    }
+
+    public static BigDecimal sine(BigDecimal x) {
+        BigDecimal lastVal = x.add(BigDecimal.ONE);
+        BigDecimal currentValue = x;
+        BigDecimal xSquared = x.multiply(x);
+        BigDecimal numerator = x;
+        BigDecimal denominator = BigDecimal.ONE;
+        int i = 0;
+
+        while (lastVal.compareTo(currentValue) != 0) {
+            lastVal = currentValue;
+
+            int z = 2 * i + 3;
+
+            denominator = denominator.multiply(BigDecimal.valueOf(z));
+            denominator = denominator.multiply(BigDecimal.valueOf(z - 1));
+            numerator = numerator.multiply(xSquared);
+
+            BigDecimal term = numerator.divide(denominator, SCALE + 5, ROUNDING_MODE);
+
+            if (i % 2 == 0) {
+                currentValue = currentValue.subtract(term);
+            } else {
+                currentValue = currentValue.add(term);
+            }
+
+            i++;
+        }
+        return currentValue;
+    }
+
+    public static BigDecimal tangent(BigDecimal x) {
+
+        BigDecimal sin = sine(x);
+        BigDecimal cos = cosine(x);
+
+        return sin.divide(cos, SCALE, BigDecimal.ROUND_HALF_UP);
+    }
+
+    public static BigDecimal log10(BigDecimal b) {
+        final int NUM_OF_DIGITS = SCALE + 2;
+        // need to add one to get the right number of dp
+        // and then add one again to get the next number
+        // so I can round it correctly.
+
+        MathContext mc = new MathContext(NUM_OF_DIGITS, RoundingMode.HALF_EVEN);
+        // special conditions:
+        // log(-x) -> exception
+        // log(1) == 0 exactly;
+        // log of a number less than one = -log(1/x)
+        if (b.signum() <= 0) {
+            throw new ArithmeticException("log of a negative number! (or zero)");
+        } else if (b.compareTo(BigDecimal.ONE) == 0) {
+            return BigDecimal.ZERO;
+        } else if (b.compareTo(BigDecimal.ONE) < 0) {
+            return (log10((BigDecimal.ONE).divide(b, mc))).negate();
+        }
+
+        StringBuilder sb = new StringBuilder();
+        // number of digits on the left of the decimal point
+        int leftDigits = b.precision() - b.scale();
+
+        // so, the first digits of the log10 are:
+        sb.append(leftDigits - 1).append(".");
+
+        // this is the algorithm outlined in the webpage
+        int n = 0;
+        while (n < NUM_OF_DIGITS) {
+            b = (b.movePointLeft(leftDigits - 1)).pow(10, mc);
+            leftDigits = b.precision() - b.scale();
+            sb.append(leftDigits - 1);
+            n++;
+        }
+
+        BigDecimal ans = new BigDecimal(sb.toString());
+
+        // Round the number to the correct number of decimal places.
+        ans = ans.round(new MathContext(ans.precision() - ans.scale() + SCALE, RoundingMode.HALF_EVEN));
+        return ans;
+    }
+
+    public static BigDecimal asin(BigDecimal val) {
+        return BigDecimal.valueOf(Math.asin(val.doubleValue()));
+    }
+
+    public static BigDecimal acos(BigDecimal val) {
+        return BigDecimal.valueOf(Math.acos(val.doubleValue()));
+    }
+
+    public static BigDecimal atan(BigDecimal val) {
+        return BigDecimal.valueOf(Math.atan(val.doubleValue()));
+    }
+
+    /**
+     * Compute e^x to a given scale by the Taylor series.
+     *
+     * @param x the value of x
+     * @param scale the desired scale of the result
+     * @return the result value
+     */
+    private static BigDecimal expTaylor(BigDecimal x, int scale) {
+        BigDecimal factorial = BigDecimal.valueOf(1);
+        BigDecimal xPower = x;
+        BigDecimal sumPrev;
+
+        // 1 + x
+        BigDecimal sum = x.add(BigDecimal.valueOf(1));
+
+        // Loop until the sums converge
+        // (two successive sums are equal after rounding).
+        int i = 2;
+        do {
+            // x^i
+            xPower = xPower.multiply(x).setScale(scale, BigDecimal.ROUND_HALF_EVEN);
+
+            // i!
+            factorial = factorial.multiply(BigDecimal.valueOf(i));
+
+            // x^i/i!
+            BigDecimal term = xPower.divide(factorial, scale, BigDecimal.ROUND_HALF_EVEN);
+
+            // sum = sum + x^i/i!
+            sumPrev = sum;
+            sum = sum.add(term);
+
+            ++i;
+            Thread.yield();
+        } while (sum.compareTo(sumPrev) != 0);
+
+        return sum;
+    }
+
+
+    /**
+     * Compute e^x to a given scale. Break x into its whole and fraction parts and compute (e^(1 +
+     * fraction/whole))^whole using Taylor's formula.
+     *
+     * @param x the value of x
+     * @param scale the desired scale of the result
+     * @return the result value
+     */
+    public static BigDecimal exp(BigDecimal x, int scale) {
+        // e^0 = 1
+        if (x.signum() == 0) {
+            return BigDecimal.valueOf(1);
+        }
+
+        // If x is negative, return 1/(e^-x).
+        else if (x.signum() == -1) {
+            return BigDecimal.valueOf(1)
+                    .divide(exp(x.negate(), scale), scale, BigDecimal.ROUND_HALF_EVEN);
+        }
+
+        // Compute the whole part of x.
+        BigDecimal xWhole = x.setScale(0, BigDecimal.ROUND_DOWN);
+
+        // If there isn't a whole part, compute and return e^x.
+        if (xWhole.signum() == 0) {
+            return expTaylor(x, scale);
+        }
+
+        // Compute the fraction part of x.
+        BigDecimal xFraction = x.subtract(xWhole);
+
+        // z = 1 + fraction/whole
+        BigDecimal z =
+                BigDecimal.valueOf(1)
+                        .add(xFraction.divide(xWhole, scale, BigDecimal.ROUND_HALF_EVEN));
+
+        // t = e^z
+        BigDecimal t = expTaylor(z, scale);
+
+        BigDecimal maxLong = BigDecimal.valueOf(Long.MAX_VALUE);
+        BigDecimal result = BigDecimal.valueOf(1);
+
+        // Compute and return t^whole using intPower().
+        // If whole > Long.MAX_VALUE, then first compute products
+        // of e^Long.MAX_VALUE.
+        while (xWhole.compareTo(maxLong) >= 0) {
+            result =
+                    result.multiply(intPower(t, Long.MAX_VALUE, scale))
+                            .setScale(scale, BigDecimal.ROUND_HALF_EVEN);
+            xWhole = xWhole.subtract(maxLong);
+
+            Thread.yield();
+        }
+        return result.multiply(intPower(t, xWhole.longValue(), scale))
+                .setScale(scale, BigDecimal.ROUND_HALF_EVEN);
+    }
+
+    /**
      * Compute the power x^y to a the given scale, using doubles.
      * Loses some precision, but means y can have non integer values.
      */
@@ -724,6 +1157,26 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     public enum DispMode {
         plain,
         sci,
+    }
+
+    public enum AngleMode {
+        degrees,
+        radians,
+    }
+
+    public String anglemode_string(AngleMode mode) {
+        switch (mode) {
+            case degrees: return "DEG";
+            case radians: return "RAD";
+        }
+        throw new IllegalArgumentException();
+    }
+
+    public AngleMode anglemode_from_string(String mode) {
+        String modeUpper = mode.toUpperCase();
+        if (modeUpper.equals("DEG")) return AngleMode.degrees;
+        else if (modeUpper.equals("RAD")) return AngleMode.radians;
+        else throw new IllegalArgumentException();
     }
 
     public String dispmode_string(DispMode mode) {

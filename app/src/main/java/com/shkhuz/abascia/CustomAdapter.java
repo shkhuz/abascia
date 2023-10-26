@@ -69,6 +69,9 @@ public class CustomAdapter extends RecyclerView.Adapter<CustomAdapter.ViewHolder
                 formatter.setRoundingMode(RoundingMode.HALF_EVEN);
                 formatter.setMaximumFractionDigits(main.dp_values[main.dp_idx]);
                 text = formatter.format(b);
+                if (text.endsWith("E0")) {
+                    text = text.substring(0, text.length()-2);
+                }
             } else {
                 text = b.setScale(main.dp_values[main.dp_idx], RoundingMode.HALF_EVEN).stripTrailingZeros().toPlainString();
             }

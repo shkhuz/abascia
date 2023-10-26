@@ -73,7 +73,7 @@ public class CalculatorKeyLayout extends GridLayout {
 
     public static boolean isSmallHeightButton(int id) {
         return id == R.id.sqrt || id == R.id.pow2 || id == R.id.swap || id == R.id.drop || id == R.id.recip ||
-                id == R.id.t1 || id == R.id.t2 || id == R.id.t3 || id == R.id.t4 || id == R.id.t5;
+                id == R.id.sin || id == R.id.cos || id == R.id.tan || id == R.id.ln || id == R.id.log;
     }
 
     public static boolean isSymbolButton(int id) {
