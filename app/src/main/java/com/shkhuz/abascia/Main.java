@@ -683,7 +683,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 final Button b = (Button) keygrid.getChildAt(i);
                 b.setText(HtmlCompat.fromHtml(settings_texts[i], HtmlCompat.FROM_HTML_MODE_LEGACY));
                 b.setTextAppearance(R.style.CalculatorButtonSmallStyle);
-                b.setBackgroundTintList(ContextCompat.getColorStateList(this, R.color.blue));
+                b.setBackgroundTintList(ContextCompat.getColorStateList(this, R.color.settingsbuttons));
             }
         }
     }

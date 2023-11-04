@@ -73,7 +73,10 @@ public class CustomAdapter extends RecyclerView.Adapter<CustomAdapter.ViewHolder
                     text = text.substring(0, text.length()-2);
                 }
             } else {
-                text = b.setScale(main.dp_values[main.dp_idx], RoundingMode.HALF_EVEN).stripTrailingZeros().toPlainString();
+                //b.setScale(main.dp_values[main.dp_idx], RoundingMode.HALF_EVEN).stripTrailingZeros();
+                NumberFormat formatter = new DecimalFormat("###,###.##");
+                formatter.setMaximumFractionDigits(main.dp_values[main.dp_idx]);
+                text = formatter.format(b);
             }
 
             holder.textView.setText(text);

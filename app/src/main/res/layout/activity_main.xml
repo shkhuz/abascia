@@ -4,15 +4,15 @@
     android:id="@+id/MainLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/grey"
+    android:background="@color/black1"
     android:gravity="top|left"
     android:orientation="vertical">
 
     <RelativeLayout
+        android:id="@+id/relativeLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:id="@+id/relativeLayout">
+        android:orientation="horizontal">
 
         <TextView
             android:id="@+id/errorView"

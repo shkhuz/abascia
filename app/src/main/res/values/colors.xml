@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="grey">#FF424242</color>
+    <color name="black1">#FF111111</color>
     <color name="green">#FFA89B29</color>
     <color name="dark_green">#80A1952A</color>
     <color name="light_green">#FF66CC77</color>
     <color name="blue">#FF007FFF</color>
+    <color name="settingsbuttons">#FF332222</color>
 </resources>
