@@ -1,17 +1,20 @@
 package com.shkhuz.abascia;
 
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.text.HtmlCompat;
@@ -19,11 +22,17 @@ import androidx.preference.PreferenceManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserException;
+
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Stack;
 
 import ru.noties.jlatexmath.JLatexMathView;
@@ -37,6 +46,36 @@ enum State {
 }
 
 public class Main extends AppCompatActivity implements View.OnKeyListener {
+    public enum ErrorKind {
+        EK_PINNED_ERROR,
+        EK_ON_STACK_ERROR,
+        EK_NONE,
+    }
+
+    public class Conversions {
+        public List<ConvGroup> convGroups;
+        public CharSequence[] convGroupNames;
+        public Conversions() {
+            this.convGroups = new ArrayList<>();
+        }
+    }
+
+    public class ConvGroup {
+        public CharSequence[] convUnitDisplays;
+        public List<ConvUnit> convUnits;
+        public ConvGroup() {
+            this.convUnits = new ArrayList<>();
+        }
+    }
+
+    public class ConvUnit {
+        public String name;
+        public String symbol;
+        public BigDecimal ratio;
+        public BigDecimal offset;
+        public boolean inverse;
+    }
+
     private RecyclerView stackview;
     private Stack<ViewModel> data = new Stack<>();
     private CustomAdapter adapter;
@@ -46,26 +85,41 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     private ErrorKind error = ErrorKind.EK_NONE;
     public int volatile_idx = -1;
     public final int INTERNAL_SCALE = 32;
-    private final MathContext mc = new MathContext(32, RoundingMode.HALF_EVEN);
     private State state = State.normal;
     private boolean isDecPresent = false;
     private boolean isExpPresent = false;
-    private Button keyshift;
-    private Button keypoint;
+
     private CalculatorKeyLayout keygrid;
     private ArrayList<CharSequence> initial_keygrid_texts = new ArrayList<>();
     private ArrayList<Boolean> initial_keygrid_styles = new ArrayList<>();
     private ColorStateList default_button_color;
+    private ColorStateList default_errorview_fgcolor;
     private SharedPreferences sharedPreferences;
     private SharedPreferences.Editor spedit;
     private static final int ROUNDING_MODE = BigDecimal.ROUND_HALF_EVEN;
     private static final int SCALE = 18;
+    private MathContext mc = new MathContext(INTERNAL_SCALE, RoundingMode.HALF_EVEN);
+
+    public class History {
+        Stack<ViewModel> data;
+        StringBuffer input;
+        ErrorKind error;
+        int volatile_idx;
+    }
+
+    private Stack<History> history = new Stack<>();
+
+    Conversions convs = new Conversions();
 
     private Button sinButton;
     private Button cosButton;
     private Button tanButton;
     private Button lnButton;
     private Button logButton;
+    private Button dropButton;
+    private Button shiftButton;
+    private Button pointButton;
+    private Button delButton;
 
     public AngleMode anglemode;
     public DispMode dispmode;
@@ -87,7 +141,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
 
     private String[] normal_texts = {
             "SIN", "COS", "TAN", "LN", "LOG",
-            "DROP", "SWAP", "<big>&#x215f;&#x2093;</big>"/*1/x*/, "<big>&#x221a;</big>"/*sqrt*/, "<big>&#x2093;&#xb2;</big>"/*x^2*/,
+            "DROP", "SWAP", "UNDO", "<big>&#x221a;</big>"/*sqrt*/, "<big>&#x2093;&#xb2;</big>"/*x^2*/,
             "SHIFT", "7", "8", "9", "<big>&#x00F7;</big>"/*div*/,
             "DEL", "4", "5", "6", "<big>&#x00D7;</big>"/*star*/,
             "E<br>N<br>T<br>E<br>R", "1", "2", "3", "<big>&#x2212;</big>"/*minus*/,
@@ -104,12 +158,12 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     };
 
     private String[] shift_texts = {
-            "", "", "", "", "",
+            "&#x2699;"/*gear*/, "", "", "", "",
             "", "", "", "", "<big>&#x2093;&#x207F;</big>"/*x^n*/,
             "SHIFT", "&#x2093;&#xb3;"/*x^3*/, "&#x221B;"/*cuberoot*/, "", "",
             "CLR", "", "", "", "",
-            "&#x2699;"/*gear*/, "&#x3C0;"/*pi*/, "e", "", "",
-                "", "", "", "",
+            "D<br>U<br>P", "&#x3C0;"/*pi*/, "e", "", "",
+                "CONV", "", "", "",
     };
 
     private boolean[] shift_styles = {
@@ -122,11 +176,11 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     };
 
     private String[] settings_texts = {
+            "BACK", "", "", "", "",
             "", "", "", "", "",
             "", "", "", "", "",
             "", "", "", "", "",
             "", "", "", "", "",
-            "B<br>A<br>C<br>K", "", "", "", "",
                 "", "", "", "",
     };
 
@@ -154,10 +208,51 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         return false;
     }
 
-    public enum ErrorKind {
-        EK_PINNED_ERROR,
-        EK_ON_STACK_ERROR,
-        EK_NONE,
+    public class ConvRatioParser {
+        public int current;
+        public BigDecimal val;
+        public String input;
+        public int inputLength;
+
+        public ConvRatioParser(String input) {
+            current = 0;
+            this.input = input;
+            this.input = this.input.replace(",", "");
+            inputLength = this.input.length();
+        }
+
+        private BigDecimal parseNumber() {
+            int from = current;
+            while (current < input.length() && input.charAt(current) != '*' && input.charAt(current) != '/' && !Character.isWhitespace(input.charAt(current)))
+                current++;
+            String toParse = input.substring(from, current);
+            return new BigDecimal(toParse);
+        }
+
+        private void skipWhitespace() {
+            while (Character.isWhitespace(input.charAt(current))) current++;
+        }
+
+        public BigDecimal parse() {
+            while (current != inputLength) {
+                if (input.charAt(current) == '*') {
+                    current++;
+                    skipWhitespace();
+                    BigDecimal operand2 = parseNumber();
+                    val = val.multiply(operand2);
+                } else if (input.charAt(current) == '/') {
+                    current++;
+                    skipWhitespace();
+                    BigDecimal operand2 = parseNumber();
+                    val = val.divide(operand2, INTERNAL_SCALE, RoundingMode.HALF_EVEN);
+                } else if (Character.isWhitespace(input.charAt(current))) {
+                    skipWhitespace();
+                } else {
+                    val = parseNumber();
+                }
+            }
+            return val;
+        }
     }
 
     @Override
@@ -179,12 +274,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         this.errorView = findViewById(R.id.errorView);
         this.anglemodeTextView = findViewById(R.id.anglemodeTextView);
 
-        this.input = new StringBuffer(32);
-        this.keyshift = findViewById(R.id.shift);
-        this.keypoint = findViewById(R.id.point);
-        this.keygrid = findViewById(R.id.keygrid);
-        this.default_button_color = keypoint.getBackgroundTintList();
-
         this.sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
         this.spedit = sharedPreferences.edit();
 
@@ -193,6 +282,15 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         this.tanButton = (Button)findViewById(R.id.tan);
         this.lnButton = (Button)findViewById(R.id.ln);
         this.logButton = (Button)findViewById(R.id.log);
+        this.dropButton = (Button)findViewById(R.id.drop);
+        this.shiftButton = findViewById(R.id.shift);
+        this.pointButton = findViewById(R.id.point);
+        this.delButton = findViewById(R.id.del);
+
+        this.input = new StringBuffer(32);
+        this.keygrid = findViewById(R.id.keygrid);
+        this.default_button_color = pointButton.getBackgroundTintList();
+        this.default_errorview_fgcolor = errorView.getTextColors();
 
         anglemode = anglemode_from_string(sharedPreferences.getString("AngleMode", "DEG"));
         dispmode = dispmode_from_string(sharedPreferences.getString("DisplayMode", "SCI"));
@@ -203,6 +301,60 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         anglemodeTextView.setText(anglemode_string(anglemode));
 
         updateState(State.normal);
+
+        List<CharSequence> convGroupNamesList = new ArrayList<>();
+        try {
+            XmlPullParser x = getResources().getXml(R.xml.conv_const_data);
+            int ev = x.getEventType();
+            while (ev != XmlPullParser.END_DOCUMENT) {
+                if (ev == XmlPullParser.START_TAG && x.getName().equals("conversions")) {
+                    while ((ev = x.next()) == XmlPullParser.START_TAG && x.getName().equals("group")) {
+                        ConvGroup convGroup = new ConvGroup();
+                        List<CharSequence> convUnitDisplaysList = new ArrayList<>();
+                        assert(x.getAttributeCount() == 1);
+                        convGroupNamesList.add(x.getAttributeValue(0));
+                        while ((ev = x.next()) == XmlPullParser.START_TAG && x.getName().equals("unit")) {
+                            ConvUnit convUnit = new ConvUnit();
+                            for (int i = 0; i < x.getAttributeCount(); i++) {
+                                String attr = x.getAttributeName(i);
+                                switch (attr) {
+                                    case "name":
+                                        convUnit.name = x.getAttributeValue(i);
+                                        break;
+                                    case "symbol":
+                                        convUnit.symbol = x.getAttributeValue(i);
+                                        break;
+                                    case "ratio":
+                                        ConvRatioParser convRatioParser = new ConvRatioParser(x.getAttributeValue(i));
+                                        convUnit.ratio = convRatioParser.parse();
+                                        break;
+                                    case "offset":
+                                        convUnit.offset = new BigDecimal(x.getAttributeValue(i));
+                                        break;
+                                    case "inverse":
+                                        convUnit.inverse = x.getAttributeValue(i).equalsIgnoreCase("true");
+                                        break;
+                                    default:
+                                        throw new RuntimeException("Unknown unit attribute");
+                                }
+                            }
+                            convGroup.convUnits.add(convUnit);
+                            convUnitDisplaysList.add(String.format("%s (%s)", convUnit.symbol, convUnit.name));
+                            ev = x.next();
+                            assert(ev == XmlPullParser.END_TAG && x.getName().equals("unit"));
+                        }
+                        convGroup.convUnitDisplays = convUnitDisplaysList.toArray(new CharSequence[0]);
+                        convs.convGroups.add(convGroup);
+                        assert(ev == XmlPullParser.END_TAG && x.getName().equals("group"));
+                    }
+                    assert(ev == XmlPullParser.END_TAG && x.getName().equals("conversions"));
+                }
+                ev = x.next();
+            }
+        } catch (XmlPullParserException | IOException e) {
+            throw new RuntimeException(e);
+        }
+        convs.convGroupNames = convGroupNamesList.toArray(new CharSequence[0]);
     }
 
     public void clickHandler(View view) {
@@ -211,12 +363,13 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         if (error == ErrorKind.EK_PINNED_ERROR) {
             error = ErrorKind.EK_NONE;
             errorView.setText("Abascia");
+            errorView.setTextColor(default_errorview_fgcolor);
         } else if (error == ErrorKind.EK_ON_STACK_ERROR) {
             if (vid == R.id.drop) {
                 error = ErrorKind.EK_NONE;
                 popAndClearInput();
-            }
-            return;
+            } else if (vid == R.id.undo) {
+            } else return;
         }
         if (error == ErrorKind.EK_NONE && vibration_millis_values[vibration_millis_idx] != 0)
             vibrateWith(vibration_millis_values[vibration_millis_idx]);
@@ -229,8 +382,8 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 adapter.notifyItemChanged(volatile_idx);
             } else if (state == State.shift) {
                 if (number == 1) {
-                    PushResult p = validatePush();
-                    if (validatePush() != PushResult.cannot_push) {
+                    PushResult p;
+                    if ((p = validatePush()) != PushResult.cannot_push) {
                         addElementIfNonVolatile();
                         volatile_idx = -1;
                         ViewModel m = data.get(data.size() - 1);
@@ -242,8 +395,8 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         binaryOp(Op.mul);
                     }
                 } else if (number == 2) {
-                    PushResult p = validatePush();
-                    if (validatePush() != PushResult.cannot_push) {
+                    PushResult p;
+                    if ((p = validatePush()) != PushResult.cannot_push) {
                         addElementIfNonVolatile();
                         volatile_idx = -1;
                         ViewModel m = data.get(data.size() - 1);
@@ -255,12 +408,14 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         binaryOp(Op.mul);
                     }
                 } else if (number == 7) {
-                    if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                    if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                        pushHistory();
                         ViewModel n = data.pop();
                         notifyAdapterItemRemoved(data.size() - 1);
                         try {
                             if (n.lastOp != Op.none) addParams(n);
-                            n.lastOp = op_from_id(vid);
+                            n.lastToLastOp = n.lastOp;
+                            n.lastOp = op_from_id(vid, state);
                             n.latex = n.latex + "^{3}";
                             n.val = n.val.pow(3);
                             data.push(n);
@@ -270,11 +425,13 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         }
                     }
                 } else if (number == 8) {
-                    if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                    if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                        pushHistory();
                         ViewModel n = data.pop();
                         notifyAdapterItemRemoved(data.size() - 1);
                         try {
-                            n.lastOp = op_from_id(vid);
+                            n.lastToLastOp = n.lastOp;
+                            n.lastOp = op_from_id(vid, state);
                             n.latex = "\\sqrt[3]{" + n.latex + "}";
                             n.val = intRoot(n.val, 3, INTERNAL_SCALE);
                             data.push(n);
@@ -282,6 +439,98 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         } catch (RuntimeException e) {
                             showOnStackError(e.getMessage());
                         }
+                    }
+                } else if (number == 0) {
+                    State stateAtClick = state;
+                    if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                        pushHistory();
+                        AlertDialog.Builder b = new AlertDialog.Builder(this);
+                        b.setTitle("Convert");
+                        b.setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialogInterface, int i) {
+                                dialogInterface.dismiss();
+                            }
+                        });
+                        b.setItems(convs.convGroupNames, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialogInterface, int i) {
+                                final int rootIdx = i;
+                                AlertDialog.Builder bf = new AlertDialog.Builder(Main.this);
+                                bf.setTitle("From");
+                                bf.setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialogInterface, int i) {
+                                        dialogInterface.dismiss();
+                                    }
+                                });
+                                bf.setNeutralButton("Back", new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialogInterface, int i) {
+                                        dialogInterface.dismiss();
+                                        b.show();
+                                    }
+                                });
+                                bf.setItems(convs.convGroups.get(rootIdx).convUnitDisplays, new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialogInterface, int i) {
+                                        final int fromIdx = i;
+                                        AlertDialog.Builder bt = new AlertDialog.Builder(Main.this);
+                                        bt.setTitle("To");
+                                        bt.setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
+                                            @Override
+                                            public void onClick(DialogInterface dialogInterface, int i) {
+                                                dialogInterface.dismiss();
+                                            }
+                                        });
+                                        bt.setNeutralButton("Back", new DialogInterface.OnClickListener() {
+                                            @Override
+                                            public void onClick(DialogInterface dialogInterface, int i) {
+                                                dialogInterface.dismiss();
+                                                bf.show();
+                                            }
+                                        });
+                                        bt.setItems(convs.convGroups.get(rootIdx).convUnitDisplays, new DialogInterface.OnClickListener() {
+                                            @Override
+                                            public void onClick(DialogInterface dialogInterface, int i) {
+                                                final int toIdx = i;
+                                                //result = (input - src.offset) * (src.ratio / dst.ratio) + dst.offset
+                                                //        - if 'src' is an inverse unit, then 1/input will be used in the above formula
+                                                //        - if 'dst' is an inverse unit, then 1/result will be returned
+                                                ConvUnit src = convs.convGroups.get(rootIdx).convUnits.get(fromIdx);
+                                                ConvUnit dst = convs.convGroups.get(rootIdx).convUnits.get(toIdx);
+
+                                                ViewModel n = data.pop();
+                                                notifyAdapterItemRemoved(data.size() - 1);
+                                                try {
+                                                    addParams(n);
+                                                    n.lastToLastOp = n.lastOp;
+                                                    n.lastOp = op_from_id(vid, stateAtClick);
+
+                                                    BigDecimal input = src.inverse ? BigDecimal.ONE.divide(n.val, mc) : n.val;
+                                                    BigDecimal result = input
+                                                            .subtract(src.offset == null ? BigDecimal.ZERO : src.offset)
+                                                            .multiply(src.ratio.divide(dst.ratio, mc))
+                                                            .add(dst.offset == null ? BigDecimal.ZERO : dst.offset);
+                                                    if (dst.inverse)
+                                                        result = BigDecimal.ONE.divide(result, mc);
+                                                    n.val = result;
+                                                    n.latex = n.latex + String.format("\\text{\\small{%s→%s}}", src.symbol, dst.symbol);
+
+                                                    data.push(n);
+                                                    adapter.notifyItemInserted(data.size() - 1);
+                                                } catch (RuntimeException e) {
+                                                    showOnStackError(e.getMessage());
+                                                }
+                                            }
+                                        });
+                                        bt.show();
+                                    }
+                                });
+                                bf.show();
+                            }
+                        });
+                        b.show();
                     }
                 }
             } else if (state == State.settings) {
@@ -299,12 +548,14 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.sin) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
                         if (n.lastOp != Op.none) addParams(n);
-                        n.lastOp = op_from_id(vid);
+                        n.lastToLastOp = n.lastOp;
+                        n.lastOp = op_from_id(vid, state);
                         if (anglemode == AngleMode.degrees) {
                             n.latex = "\\sin^{\\circ}{" + n.latex + "}";
                             n.val = BigDecimalMath.sin(BigDecimalMath.toRadians(n.val, mc), mc);
@@ -319,21 +570,20 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     }
                 }
             } else if (state == State.shift) {
+                updateState(State.settings);
             } else if (state == State.settings) {
-                if (anglemode == AngleMode.degrees) anglemode = AngleMode.radians;
-                else anglemode = AngleMode.degrees;
-
-                spedit.putString("AngleMode", anglemode_string(anglemode));
-                spedit.apply();
+                updateState(State.normal);
             }
         } else if (vid == R.id.cos) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
                         if (n.lastOp != Op.none) addParams(n);
-                        n.lastOp = op_from_id(vid);
+                        n.lastToLastOp = n.lastOp;
+                        n.lastOp = op_from_id(vid, state);
                         if (anglemode == AngleMode.degrees) {
                             n.latex = "\\cos^{\\circ}{" + n.latex + "}";
                             n.val = BigDecimalMath.cos(BigDecimalMath.toRadians(n.val, mc), mc);
@@ -357,12 +607,14 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.tan) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
                         if (n.lastOp != Op.none) addParams(n);
-                        n.lastOp = op_from_id(vid);
+                        n.lastToLastOp = n.lastOp;
+                        n.lastOp = op_from_id(vid, state);
                         if (anglemode == AngleMode.degrees) {
                             n.latex = "\\tan^{\\circ}{" + n.latex + "}";
                             n.val = BigDecimalMath.tan(BigDecimalMath.toRadians(n.val, mc), mc);
@@ -386,12 +638,14 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.ln) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
                         if (n.lastOp != Op.none) addParams(n);
-                        n.lastOp = op_from_id(vid);
+                        n.lastToLastOp = n.lastOp;
+                        n.lastOp = op_from_id(vid, state);
                         n.latex = "\\ln{" + n.latex + "}";
                         n.val = BigDecimalMath.log(n.val, mc);
                         data.push(n);
@@ -410,12 +664,14 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.log) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
                         if (n.lastOp != Op.none) addParams(n);
-                        n.lastOp = op_from_id(vid);
+                        n.lastToLastOp = n.lastOp;
+                        n.lastOp = op_from_id(vid, state);
                         n.latex = "\\log{" + n.latex + "}";
                         n.val = BigDecimalMath.log10(n.val, mc);
                         data.push(n);
@@ -434,35 +690,46 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.enter) {
             if (state == State.normal) {
+                // This automatically creates history.
                 validatePush();
             } else if (state == State.shift) {
-                updateState(State.settings);
-            } else if (state == State.settings) {
-                updateState(State.normal);
+                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                    pushHistory();
+                    ViewModel n = data.pop();
+                    notifyAdapterItemRemoved(data.size()-1);
+                    data.push(n);
+                    data.push(n.clone());
+                    adapter.notifyItemRangeInserted(data.size()-1, 2);
+                }
             }
         } else if ((vid == R.id.plus || vid == R.id.minus || vid == R.id.mult || vid == R.id.div)) {
             if (state == State.normal) {
-                binaryOp(op_from_id(vid));
+                binaryOp(op_from_id(vid, state));
             } else if (state == State.shift) {
             } else if (state == State.settings) {
             }
         } else if (vid == R.id.chs) {
             if (state == State.normal) {
-                if (volatile_idx == -1 && data.size() > 0) {
+                if (volatile_idx == -1 && validateNItemsOnStack(1)) {
+                    pushHistory();
                     ViewModel n = data.get(data.size()-1);
                     if (n.latex.startsWith("-")) {
                         StringBuilder s = new StringBuilder(n.latex).deleteCharAt(0);
                         n.latex = s.toString();
+                        // We don't do n.lastToLastOp = n.lastOp here
+                        n.lastOp = n.lastToLastOp;
                     } else {
-                        if (n.lastOp == Op.add || n.lastOp == Op.sub) {
-                            addParamsIfNeeded(n, op_from_id(vid), false);
+                        if ((n.lastOp == Op.conv || n.lastOp == Op.add || n.lastOp == Op.sub)) {
+                            addParamsIfNeeded(n, op_from_id(vid, state), false);
                         }
-                        n.lastOp = op_from_id(vid);
+                        n.lastToLastOp = n.lastOp;
+                        n.lastOp = op_from_id(vid, state);
                         n.latex = '-' + n.latex;
                     }
                     n.val = n.val.negate();
                     adapter.notifyItemChanged(data.size()-1);
                 } else if (volatile_idx != -1) {
+                    pushHistory();
                     int idxE = input.indexOf("E");
                     int idxMinus = input.indexOf("-");
                     if (idxE != -1) {
@@ -500,12 +767,14 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.pow2) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
                         if (n.lastOp != Op.none) addParams(n);
-                        n.lastOp = op_from_id(vid);
+                        n.lastToLastOp = n.lastOp;
+                        n.lastOp = op_from_id(vid, state);
                         n.latex = n.latex + "^{2}";
                         n.val = n.val.pow(2);
                         data.push(n);
@@ -515,14 +784,16 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     }
                 }
             } else if (state == State.shift) {
-                if (validatePush() != PushResult.cannot_push && data.size() > 1) {
+                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(2)) {
+                    pushHistory();
                     // TODO: store viewmodel instead of creating anew
                     ViewModel exp = data.pop();
                     ViewModel n = data.pop();
                     notifyAdapterItemRangeRemoved(data.size()-2, 2);
                     try {
                         if (n.lastOp != Op.none) addParams(n);
-                        n.lastOp = op_from_id(vid);
+                        n.lastToLastOp = n.lastOp;
+                        n.lastOp = op_from_id(vid, state);
                         n.latex = n.latex + "^{" + exp.latex + "}";
                         BigDecimal res;
                         try {
@@ -542,11 +813,13 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.sqrt) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && data.size() > 0) {
+                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
-                        n.lastOp = op_from_id(vid);
+                        n.lastToLastOp = n.lastOp;
+                        n.lastOp = op_from_id(vid, state);
                         n.latex = "\\sqrt{" + n.latex + "}";
                         n.val = sqrt(n.val, INTERNAL_SCALE);
                         data.push(n);
@@ -560,13 +833,20 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.drop) {
             if (state == State.normal) {
+                // This automatically creates history.
                 popAndClearInput();
             } else if (state == State.shift) {
             } else if (state == State.settings) {
+                if (anglemode == AngleMode.degrees) anglemode = AngleMode.radians;
+                else anglemode = AngleMode.degrees;
+
+                spedit.putString("AngleMode", anglemode_string(anglemode));
+                spedit.apply();
             }
         } else if (vid == R.id.swap) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && data.size() > 1) {
+                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(2)) {
+                    pushHistory();
                     ViewModel n1 = data.pop();
                     ViewModel n2 = data.pop();
                     notifyAdapterItemRangeRemoved(data.size() - 2, 2);
@@ -576,6 +856,22 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 }
             } else if (state == State.shift) {
             } else if (state == State.settings) {
+            }
+        } else if (vid == R.id.undo) {
+            if (state == State.normal) {
+                if (history.isEmpty()) {
+                    showPinnedError("No previous history");
+                } else {
+                    History h = history.pop();
+                    data = h.data;
+                    adapter.data = h.data;
+                    error = h.error;
+                    input = h.input;
+                    volatile_idx = h.volatile_idx;
+                    Log.d("A", String.format("Popped history, input=%s", input.toString()));
+                    adapter.notifyDataSetChanged();
+                }
+
             }
         }
 
@@ -593,21 +889,21 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         // In state changes
         if (state == State.normal) {
             if (isExpPresent) {
-                keypoint.setText(".");
-                keypoint.setEnabled(false);
+                pointButton.setText(".");
+                pointButton.setEnabled(false);
             } else {
-                keypoint.setEnabled(true);
-                if (isDecPresent) keypoint.setText("EE");
-                else keypoint.setText(".");
+                pointButton.setEnabled(true);
+                if (isDecPresent) pointButton.setText("EE");
+                else pointButton.setText(".");
             }
         } else if (state == State.settings) {
             String anglemodestr = anglemode_string(anglemode);
-            sinButton.setText(String.format("%s", anglemodestr));
             anglemodeTextView.setText(anglemodestr);
             cosButton.setText(String.format("Mode: %s", dispmode_string(dispmode)));
             tanButton.setText(String.format("TP: %d", tp_values[tp_idx]));
             lnButton.setText(String.format("DP: %d", dp_values[dp_idx]));
             logButton.setText(String.format("Vibration: %dms", vibration_millis_values[vibration_millis_idx]));
+            dropButton.setText(String.format("%s", anglemodestr));
             adapter.notifyItemRangeChanged(0, data.size());
 
             tanButton.setEnabled(dispmode != DispMode.plain);
@@ -617,8 +913,31 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         stackview.scrollToPosition(data.size() - 1);
     }
 
+    private boolean validateNItemsOnStack(int n) {
+        if (data.size() >= n) {
+            return true;
+        } else {
+            showPinnedError(String.format(Locale.ENGLISH, "Needs %d arguments", n));
+            return false;
+        }
+    }
+
+    private void pushHistory() {
+        History h = new History();
+        Stack<ViewModel> dataCopy = new Stack<>();
+        for (ViewModel v: data) {
+            dataCopy.push(v.clone());
+        }
+        h.data = dataCopy;
+        h.input = new StringBuffer(input);
+        h.error = error;
+        h.volatile_idx = volatile_idx;
+        history.push(h);
+    }
+
     private void binaryOp(Op op) {
-        if (validatePush() != PushResult.cannot_push && data.size() > 1) {
+        if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(2)) {
+            pushHistory();
             ViewModel n2 = data.pop();
             ViewModel n1 = data.pop();
             notifyAdapterItemRangeRemoved(data.size() - 2, 2);
@@ -628,11 +947,21 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     addParamsIfNeeded(n1, op, true);
                     addParamsIfNeeded(n2, op, false);
                 }
+                n1.lastToLastOp = n1.lastOp;
                 n1.lastOp = op;
-                if (op == Op.add) { n1.val = n1.val.add(n2.val);                          n1.latex = n1.latex + "+" + n2.latex; }
-                else if (op == Op.sub) { n1.val = n1.val.subtract(n2.val);                n1.latex = n1.latex + "-" + n2.latex; }
-                else if (op == Op.mul) { n1.val = n1.val.multiply(n2.val);                n1.latex = n1.latex + "\\cdot " + n2.latex; }
-                else { n1.val = n1.val.divide(n2.val, INTERNAL_SCALE, RoundingMode.HALF_EVEN); n1.latex = "\\frac{" + n1.latex + "}{" + n2.latex + "}"; }
+                if (op == Op.add) {
+                    n1.val = n1.val.add(n2.val);
+                    n1.latex = n1.latex + "+" + n2.latex;
+                } else if (op == Op.sub) {
+                    n1.val = n1.val.subtract(n2.val);
+                    n1.latex = n1.latex + "-" + n2.latex;
+                } else if (op == Op.mul) {
+                    n1.val = n1.val.multiply(n2.val);
+                    n1.latex = n1.latex + "\\cdot " + n2.latex;
+                } else {
+                    n1.val = n1.val.divide(n2.val, INTERNAL_SCALE, RoundingMode.HALF_EVEN);
+                    n1.latex = "\\frac{" + n1.latex + "}{" + n2.latex + "}";
+                }
                 data.push(n1);
                 adapter.notifyItemInserted(data.size() - 1);
             } catch (ArithmeticException e) {
@@ -642,14 +971,17 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     }
 
     private int getOpPrecedence(Op op) {
-        if (op == Op.add || op == Op.sub) return 1;
-        else if (op == Op.mul || op == Op.div) return 2;
-        else if (op == Op.neg) return 3;
-        else return 4;
+        if (op == Op.conv) return 1;
+        else if (op == Op.add || op == Op.sub) return 2;
+        else if (op == Op.mul || op == Op.div) return 3;
+        else if (op == Op.neg) return 4;
+        else return 5;
     }
 
     private void addParams(ViewModel v) {
-        v.latex = "\\left(" + v.latex + "\\right)";
+         if (!(v.latex.startsWith("\\left(") && v.latex.endsWith("\\right)"))) {
+             v.latex = "\\left(" + v.latex + "\\right)";
+         }
     }
 
     private void addParamsIfNeeded(ViewModel v, Op parentOp, boolean isLeftOperand) {
@@ -661,14 +993,15 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     private void updateState(State value) {
         state = value;
         if (state == State.normal) {
-            ((Button)findViewById(R.id.tan)).setEnabled(true);
+            tanButton.setEnabled(true);
             for (int i = 0; i < keygrid.getChildCount(); i++) {
                 final Button b = (Button) keygrid.getChildAt(i);
                 b.setText(HtmlCompat.fromHtml(normal_texts[i], HtmlCompat.FROM_HTML_MODE_LEGACY));
                 b.setTextAppearance(normal_styles[i] ? R.style.CalculatorButtonLargeStyle : R.style.CalculatorButtonSmallStyle);
                 b.setBackgroundTintList(default_button_color);
             }
-            keyshift.setBackgroundTintList(ContextCompat.getColorStateList(this, R.color.dark_green));
+            shiftButton.setBackgroundTintList(ContextCompat.getColorStateList(this, R.color.dark_green));
+            delButton.setBackgroundTintList(ContextCompat.getColorStateList(this, R.color.deletecolor));
         } else if (state == State.shift) {
             for (int i = 0; i < keygrid.getChildCount(); i++) {
                 final Button b = (Button) keygrid.getChildAt(i);
@@ -677,7 +1010,8 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 b.setBackgroundTintList(default_button_color);
                 if (b.getId() == R.id.point) b.setEnabled(true);
             }
-            keyshift.setBackgroundTintList(ContextCompat.getColorStateList(this, R.color.green));
+            shiftButton.setBackgroundTintList(ContextCompat.getColorStateList(this, R.color.green));
+            delButton.setBackgroundTintList(ContextCompat.getColorStateList(this, R.color.deletecolor));
         } else if (state == State.settings) {
             for (int i = 0; i < keygrid.getChildCount(); i++) {
                 final Button b = (Button) keygrid.getChildAt(i);
@@ -701,6 +1035,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     private void showPinnedError(final String err) {
         error = ErrorKind.EK_PINNED_ERROR;
         errorView.setText(err);
+        errorView.setTextColor(ContextCompat.getColorStateList(this, R.color.errorcolor));
     }
 
     private void showOnStackError(final String err) {
@@ -713,6 +1048,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
 
     private void addElementIfNonVolatile() {
         if (volatile_idx == -1) {
+            pushHistory();
             data.push(new ViewModel(new BigDecimal("0")));
             adapter.notifyItemInserted(data.size()-1);
             volatile_idx = data.size()-1;
@@ -721,6 +1057,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
 
     private void addElementIfEmpty() {
         if (data.size() == 0) {
+            pushHistory();
             data.push(new ViewModel(new BigDecimal("0")));
             adapter.notifyItemInserted(data.size()-1);
             volatile_idx = data.size()-1;
@@ -736,6 +1073,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     private PushResult validatePush() {
         if (volatile_idx == -1) return PushResult.nothing_to_push;
         else if (input.length() > 0 && input.indexOf("E") < input.length()-1) {
+            pushHistory();
             if (input.indexOf(".") == 0 || input.indexOf("-.") == 0) {
                 input.insert(input.indexOf("-") != -1 ? 1 : 0, '0');
             }
@@ -764,7 +1102,8 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     }
 
     private void popAndClearInput() {
-        if (data.size() > 0) {
+        if (validateNItemsOnStack(1)) {
+            pushHistory();
             data.pop();
             notifyAdapterItemRemoved(data.size() - 1);
             volatile_idx = -1;
@@ -1116,6 +1455,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             // cached resources.
             JLatexMathView view = new JLatexMathView(Main.this);
             view.setLatex("\\frac{a}{c}");
+
         }
     }
 
@@ -1168,8 +1508,9 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         else throw new IllegalArgumentException();
     }
 
-    public Op op_from_id(int id) {
-        if (id == R.id.plus) return Op.add;
+    public Op op_from_id(int id, State state) {
+        if (id == R.id.k0 && state == State.shift) return Op.conv;
+        else if (id == R.id.plus) return Op.add;
         else if (id == R.id.minus) return Op.sub;
         else if (id == R.id.mult) return Op.mul;
         else if (id == R.id.div) return Op.div;
@@ -1178,6 +1519,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     }
 
     public enum Op {
+        conv,
         add,
         sub,
         mul,

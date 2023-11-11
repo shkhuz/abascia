@@ -4,14 +4,14 @@ plugins {
 
 android {
     namespace 'com.shkhuz.abascia'
-    compileSdk 33
+    compileSdk 34
 
     defaultConfig {
         applicationId "com.shkhuz.abascia"
         minSdk 24
-        targetSdk 33
+        targetSdk 34
         versionCode 1
-        versionName "1.0.7"
+        versionName "1.0.8"
 
         signingConfig signingConfigs.debug
     }

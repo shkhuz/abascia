@@ -7,4 +7,6 @@
     <color name="light_green">#FF66CC77</color>
     <color name="blue">#FF007FFF</color>
     <color name="settingsbuttons">#FF332222</color>
+    <color name="deletecolor">#FF771111</color>
+    <color name="errorcolor">#FFAA3333</color>
 </resources>
