@@ -1,6 +1,9 @@
 package com.shkhuz.abascia;
 
 import android.content.Context;
+import android.content.res.AssetManager;
+import android.graphics.PorterDuff;
+import android.graphics.Typeface;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.SpannedString;
@@ -18,21 +21,25 @@ import java.math.BigDecimal;
 
 public class CalculatorKeyLayout extends GridLayout {
     private final Context ctx;
+    private AssetManager am;
 
     public CalculatorKeyLayout(final Context context) {
         super(context);
         this.ctx = context;
+        this.am = context.getAssets();
     }
 
     public CalculatorKeyLayout(final Context context, final AttributeSet attrs) {
         super(context, attrs);
         this.ctx = context;
+        this.am = context.getAssets();
     }
 
     public CalculatorKeyLayout(final Context context, final AttributeSet attrs,
                                final int defStyle) {
         super(context, attrs, defStyle);
         this.ctx = context;
+        this.am = context.getAssets();
     }
 
     @Override
@@ -45,6 +52,7 @@ public class CalculatorKeyLayout extends GridLayout {
     }
 
     private void resizeKeys(int width, int height) {
+        final Typeface robotoFont = Typeface.createFromAsset(am, "fonts/Roboto-Regular-Customized.ttf");
         int keyw = width / 5;
         int keyh = keyw;
         Log.d("KEYGRID", String.format("%d", keyw));
@@ -62,12 +70,13 @@ public class CalculatorKeyLayout extends GridLayout {
                 key.setHeight((int)(keyh / 1.5));
             }
             key.setWidth(keyw);
-            if (isSmallHeightButton(kid)) {
-                float size = key.getTextSize();
-                if (size > 32.0) {
-                    key.setTextSize(TypedValue.COMPLEX_UNIT_PX, 32.0f);
-                }
-            }
+            key.setTypeface(robotoFont);
+//            if (isSmallHeightButton(kid)) {
+//                float size = key.getTextSize();
+//                if (size > 34.0) {
+//                    key.setTextSize(TypedValue.COMPLEX_UNIT_PX, 34.0f);
+//                }
+//            }
         }
     }
 

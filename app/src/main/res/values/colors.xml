@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="grey">#FF424242</color>
     <color name="black1">#FF111111</color>
-    <color name="green">#FFA89B29</color>
-    <color name="dark_green">#80A1952A</color>
-    <color name="light_green">#FF66CC77</color>
-    <color name="blue">#FF007FFF</color>
-    <color name="settingsbuttons">#FF332222</color>
-    <color name="deletecolor">#FF771111</color>
-    <color name="errorcolor">#FFAA3333</color>
+    <color name="shift_pressed">#FFCDDD6D</color>
+    <color name="shift_normal">#E0A1B54A</color>
+    <color name="stack_nonvolatile">#FF66CC77</color>
+    <color name="msginfo">#FFFFFFFF</color>
+    <color name="settingbtns">#FFBBCCCC</color>
+    <color name="deletebtn">#FFFF6666</color>
+    <color name="msgerror">#FFAA3333</color>
 </resources>

@@ -3,11 +3,15 @@
     <style name="CalculatorButtonLargeStyle" parent="@android:style/Widget.Holo.Button">
         <item name="android:textSize">24sp</item>
         <item name="android:layout_gravity">top|left</item>
-        <item name="android:backgroundTint">#FF112222</item>
+    </style>
+
+    <style name="CalculatorButtonMediumStyle" parent="@android:style/Widget.Holo.Button">
+        <item name="android:textSize">14sp</item>
+        <item name="android:layout_gravity">top|left</item>
     </style>
 
     <style name="CalculatorButtonSmallStyle" parent="@android:style/Widget.Holo.Button.Small">
-        <item name="android:textSize">14sp</item>
+        <item name="android:textSize">10sp</item>
         <item name="android:layout_gravity">top|left</item>
     </style>
 </resources>

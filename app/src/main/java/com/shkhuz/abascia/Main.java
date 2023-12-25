@@ -1,5 +1,9 @@
 package com.shkhuz.abascia;
 
+import android.annotation.SuppressLint;
+import android.content.ClipData;
+import android.content.ClipDescription;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
@@ -30,10 +34,22 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
 import java.math.RoundingMode;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Stack;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import ru.noties.jlatexmath.JLatexMathView;
 
@@ -46,10 +62,11 @@ enum State {
 }
 
 public class Main extends AppCompatActivity implements View.OnKeyListener {
-    public enum ErrorKind {
-        EK_PINNED_ERROR,
-        EK_ON_STACK_ERROR,
-        EK_NONE,
+    public enum MsgKind {
+        PINNED_ERROR,
+        PINNED_INFO,
+        ON_STACK_ERROR,
+        NONE,
     }
 
     public class Conversions {
@@ -80,30 +97,30 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     private Stack<ViewModel> data = new Stack<>();
     private CustomAdapter adapter;
     public StringBuffer input;
-    public TextView errorView;
+    public TextView msgView;
     public TextView anglemodeTextView;
-    private ErrorKind error = ErrorKind.EK_NONE;
+    private MsgKind msgKind = MsgKind.NONE;
     public int volatile_idx = -1;
     public final int INTERNAL_SCALE = 32;
     private State state = State.normal;
-    private boolean isDecPresent = false;
-    private boolean isExpPresent = false;
 
     private CalculatorKeyLayout keygrid;
     private ArrayList<CharSequence> initial_keygrid_texts = new ArrayList<>();
     private ArrayList<Boolean> initial_keygrid_styles = new ArrayList<>();
     private ColorStateList default_button_color;
-    private ColorStateList default_errorview_fgcolor;
-    private SharedPreferences sharedPreferences;
-    private SharedPreferences.Editor spedit;
+    private ColorStateList default_msgkind_fgcolor;
+    public SharedPreferences sp;
+    public SharedPreferences.Editor spedit;
     private static final int ROUNDING_MODE = BigDecimal.ROUND_HALF_EVEN;
     private static final int SCALE = 18;
     private MathContext mc = new MathContext(INTERNAL_SCALE, RoundingMode.HALF_EVEN);
 
+    private ClipboardManager clipMgr;
+
     public class History {
         Stack<ViewModel> data;
         StringBuffer input;
-        ErrorKind error;
+        MsgKind error;
         int volatile_idx;
     }
 
@@ -148,31 +165,31 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                                      "0", ".", "&#x00b1;"/*plusminus*/, "<big>+</big>",
     };
 
-    private boolean[] normal_styles = {
-            false, false, false, false, false,
-            false, false, false, false, false,
-            false, true,  true,  true,  true,
-            false, true,  true,  true,  true,
-            false, true,  true,  true,  true,
-                   true,  true,  true,  true,
+    private int[] normal_styles = {
+            0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,
+            1, 2, 2, 2, 2,
+            1, 2, 2, 2, 2,
+            1, 2, 2, 2, 2,
+               2, 2, 2, 2,
     };
 
     private String[] shift_texts = {
-            "&#x2699;"/*gear*/, "", "", "", "",
+            "&#x2699;"/*gear*/, "", "", "COPY", "PASTE",
             "", "", "", "", "<big>&#x2093;&#x207F;</big>"/*x^n*/,
-            "SHIFT", "&#x2093;&#xb3;"/*x^3*/, "&#x221B;"/*cuberoot*/, "", "",
+            "SHIFT", "<small>&#x2093;&#xb3;</small>"/*x^3*/, "<small>&#x221B;</small>"/*cuberoot*/, "", "",
             "CLR", "", "", "", "",
             "D<br>U<br>P", "&#x3C0;"/*pi*/, "e", "", "",
                 "CONV", "", "", "",
     };
 
-    private boolean[] shift_styles = {
-            false, false, false, false, false,
-            false, false, false, false, false,
-            false, true,  true,  false, false,
-            false, false, false, false, false,
-            false, true,  true,  false, false,
-                   false, false, false, false,
+    private int[] shift_styles = {
+            1, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,
+            1, 2, 2, 2, 2,
+            1, 2, 2, 2, 2,
+            1, 2, 2, 2, 2,
+               1, 2, 2, 2,
     };
 
     private String[] settings_texts = {
@@ -182,6 +199,16 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             "", "", "", "", "",
             "", "", "", "", "",
                 "", "", "", "",
+    };
+
+    public enum CopyItemsMode {
+        copy_last_item,
+        copy_all_items,
+    }
+
+    private CharSequence[] copy_items_text = {
+            "Copy last item",
+            "Copy all items",
     };
 
     @Override
@@ -271,11 +298,11 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         this.stackview.setItemAnimator(null);
         this.adapter = new CustomAdapter(data, this);
         this.stackview.setAdapter(this.adapter);
-        this.errorView = findViewById(R.id.errorView);
+        this.msgView = findViewById(R.id.errorView);
         this.anglemodeTextView = findViewById(R.id.anglemodeTextView);
 
-        this.sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
-        this.spedit = sharedPreferences.edit();
+        this.sp = PreferenceManager.getDefaultSharedPreferences(this);
+        this.spedit = sp.edit();
 
         this.sinButton = (Button)findViewById(R.id.sin);
         this.cosButton = (Button)findViewById(R.id.cos);
@@ -289,18 +316,19 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
 
         this.input = new StringBuffer(32);
         this.keygrid = findViewById(R.id.keygrid);
-        this.default_button_color = pointButton.getBackgroundTintList();
-        this.default_errorview_fgcolor = errorView.getTextColors();
+        this.default_button_color = pointButton.getTextColors();
+        this.default_msgkind_fgcolor = msgView.getTextColors();
 
-        anglemode = anglemode_from_string(sharedPreferences.getString("AngleMode", "DEG"));
-        dispmode = dispmode_from_string(sharedPreferences.getString("DisplayMode", "SCI"));
-        tp_idx = sharedPreferences.getInt("TP", 3);
-        dp_idx = sharedPreferences.getInt("DP", 1);
-        vibration_millis_idx = sharedPreferences.getInt("VibrationMillis", 1);
+        anglemode = anglemode_from_string(sp.getString("AngleMode", "DEG"));
+        dispmode = dispmode_from_string(sp.getString("DisplayMode", "SCI"));
+        tp_idx = sp.getInt("TP", 3);
+        dp_idx = sp.getInt("DP", 1);
+        vibration_millis_idx = sp.getInt("VibrationMillis", 1);
 
         anglemodeTextView.setText(anglemode_string(anglemode));
 
         updateState(State.normal);
+        this.clipMgr = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
 
         List<CharSequence> convGroupNamesList = new ArrayList<>();
         try {
@@ -355,23 +383,28 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             throw new RuntimeException(e);
         }
         convs.convGroupNames = convGroupNamesList.toArray(new CharSequence[0]);
+
+        Eula eula = new Eula(this);
+        eula.showIfNotAccepted();
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     public void clickHandler(View view) {
         int vid = view.getId();
 
-        if (error == ErrorKind.EK_PINNED_ERROR) {
-            error = ErrorKind.EK_NONE;
-            errorView.setText("Abascia");
-            errorView.setTextColor(default_errorview_fgcolor);
-        } else if (error == ErrorKind.EK_ON_STACK_ERROR) {
+        if (msgKind == MsgKind.PINNED_ERROR || msgKind == MsgKind.PINNED_INFO) {
+            msgKind = MsgKind.NONE;
+            msgView.setText("Abascia");
+            msgView.setTextColor(default_msgkind_fgcolor);
+        } else if (msgKind == MsgKind.ON_STACK_ERROR) {
             if (vid == R.id.drop) {
-                error = ErrorKind.EK_NONE;
                 popAndClearInput();
+                msgKind = MsgKind.NONE;
+                return;
             } else if (vid == R.id.undo) {
             } else return;
         }
-        if (error == ErrorKind.EK_NONE && vibration_millis_values[vibration_millis_idx] != 0)
+        if (msgKind == MsgKind.NONE && vibration_millis_values[vibration_millis_idx] != 0)
             vibrateWith(vibration_millis_values[vibration_millis_idx]);
 
         int number = CalculatorKeyLayout.getNumberFromButton(vid);
@@ -382,8 +415,8 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 adapter.notifyItemChanged(volatile_idx);
             } else if (state == State.shift) {
                 if (number == 1) {
-                    PushResult p;
-                    if ((p = validatePush()) != PushResult.cannot_push) {
+                    PushResult p = validatePush();
+                    if (pushOk(p)) {
                         addElementIfNonVolatile();
                         volatile_idx = -1;
                         ViewModel m = data.get(data.size() - 1);
@@ -395,8 +428,8 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         binaryOp(Op.mul);
                     }
                 } else if (number == 2) {
-                    PushResult p;
-                    if ((p = validatePush()) != PushResult.cannot_push) {
+                    PushResult p = validatePush();
+                    if (pushOk(p)) {
                         addElementIfNonVolatile();
                         volatile_idx = -1;
                         ViewModel m = data.get(data.size() - 1);
@@ -408,7 +441,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         binaryOp(Op.mul);
                     }
                 } else if (number == 7) {
-                    if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                    if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
                         pushHistory();
                         ViewModel n = data.pop();
                         notifyAdapterItemRemoved(data.size() - 1);
@@ -425,7 +458,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         }
                     }
                 } else if (number == 8) {
-                    if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                    if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
                         pushHistory();
                         ViewModel n = data.pop();
                         notifyAdapterItemRemoved(data.size() - 1);
@@ -442,7 +475,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     }
                 } else if (number == 0) {
                     State stateAtClick = state;
-                    if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                    if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
                         pushHistory();
                         AlertDialog.Builder b = new AlertDialog.Builder(this);
                         b.setTitle("Convert");
@@ -548,7 +581,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.sin) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
                     pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
@@ -576,7 +609,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.cos) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
                     pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
@@ -607,7 +640,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.tan) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
                     pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
@@ -638,7 +671,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.ln) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
                     pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
@@ -655,6 +688,43 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     }
                 }
             } else if (state == State.shift) {
+                if (data.size() == 0) {
+                    showPinnedError("Nothing to copy");
+                } else if (pushOk(validatePush())) {
+                    if (data.size() > 1) {
+                        AlertDialog.Builder b = new AlertDialog.Builder(this);
+                        b.setTitle("Copy items");
+                        b.setItems(copy_items_text, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                CopyItemsMode mode = CopyItemsMode.values()[which];
+                                switch (mode) {
+                                    case copy_last_item:
+                                        copyStringToClip(convertNumberToString(data.lastElement().val));
+                                        break;
+
+                                    case copy_all_items: {
+                                        StringBuilder all_items = new StringBuilder();
+                                        for (int i = 0; i < data.size(); i++) {
+                                            all_items.append(convertNumberToString(data.get(i).val));
+                                            all_items.append('\n');
+                                        }
+                                        copyStringToClip(all_items.toString());
+                                    } break;
+                                }
+                            }
+                        });
+                        b.setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                dialog.dismiss();
+                            }
+                        });
+                        b.show();
+                    } else {
+                        copyStringToClip(convertNumberToString(data.lastElement().val));
+                    }
+                }
             } else if (state == State.settings) {
                 if (dp_idx == dp_values.length - 1) dp_idx = 0;
                 else dp_idx++;
@@ -664,7 +734,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.log) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
                     pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
@@ -681,6 +751,37 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     }
                 }
             } else if (state == State.shift) {
+                if (pushOk(validatePush())) {
+                    pushHistory();
+                    ClipData.Item clipItem = Objects.requireNonNull(clipMgr.getPrimaryClip()).getItemAt(0);
+                    CharSequence pasteDataRaw = clipItem.getText();
+                    if (pasteDataRaw == null) {
+                        showOnStackError("Paste failed: non-text clipboard input");
+                    } else {
+                        List<String> pasteItems = new LinkedList<>(Arrays.asList(pasteDataRaw
+                                .toString()
+                                .replaceAll(",", "")
+                                .split("\n")));
+                        pasteItems.removeAll(Arrays.asList("", null));
+
+                        List<BigDecimal> decimals = new ArrayList<>();
+                        try {
+                            for (String item: pasteItems) {
+                                decimals.add(new BigDecimal(item));
+                            }
+
+                            for (int i = 0; i < decimals.size(); i++) {
+                                ViewModel m = new ViewModel();
+                                m.val = decimals.get(i);
+                                m.latex = formatInputToLatex(pasteItems.get(i));
+                                data.push(m);
+                                adapter.notifyItemInserted(data.size()-1);
+                            }
+                        } catch (NumberFormatException e) {
+                            showOnStackError("Paste failed: non-numerical or invalid input provided");
+                        }
+                    }
+                }
             } else if (state == State.settings) {
                 if (vibration_millis_idx == vibration_millis_values.length-1) vibration_millis_idx = 0;
                 else vibration_millis_idx++;
@@ -693,7 +794,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 // This automatically creates history.
                 validatePush();
             } else if (state == State.shift) {
-                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
                     pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size()-1);
@@ -729,7 +830,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     n.val = n.val.negate();
                     adapter.notifyItemChanged(data.size()-1);
                 } else if (volatile_idx != -1) {
-                    pushHistory();
                     int idxE = input.indexOf("E");
                     int idxMinus = input.indexOf("-");
                     if (idxE != -1) {
@@ -759,6 +859,8 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     adapter.notifyItemChanged(volatile_idx);
                 }
             } else if (state == State.shift) {
+                // TODO: should we push history even if stack is empty?
+                pushHistory();
                 volatile_idx = -1;
                 data.clear();
                 adapter.notifyItemRangeRemoved(0, data.size());
@@ -767,7 +869,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.pow2) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
                     pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
@@ -779,12 +881,12 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         n.val = n.val.pow(2);
                         data.push(n);
                         adapter.notifyItemInserted(data.size() - 1);
-                    } catch (RuntimeException e) {
+                    } catch (ArithmeticException e) {
                         showOnStackError(e.getMessage());
                     }
                 }
             } else if (state == State.shift) {
-                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(2)) {
+                if (pushOk(validatePush()) && validateNItemsOnStack(2)) {
                     pushHistory();
                     // TODO: store viewmodel instead of creating anew
                     ViewModel exp = data.pop();
@@ -813,7 +915,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.sqrt) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(1)) {
+                if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
                     pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
@@ -845,7 +947,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             }
         } else if (vid == R.id.swap) {
             if (state == State.normal) {
-                if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(2)) {
+                if (pushOk(validatePush()) && validateNItemsOnStack(2)) {
                     pushHistory();
                     ViewModel n1 = data.pop();
                     ViewModel n2 = data.pop();
@@ -865,36 +967,40 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     History h = history.pop();
                     data = h.data;
                     adapter.data = h.data;
-                    error = h.error;
+                    msgKind = h.error;
                     input = h.input;
                     volatile_idx = h.volatile_idx;
-                    Log.d("A", String.format("Popped history, input=%s", input.toString()));
                     adapter.notifyDataSetChanged();
+                    showPinnedInfo("Undid change");
                 }
 
             }
         }
 
-        // Transition state changes
         if (state == State.shift && vid != R.id.shift) updateState(State.normal);
 
-        if (error == ErrorKind.EK_NONE && volatile_idx != -1) {
-            isDecPresent = input.indexOf(".") != -1;
-            isExpPresent = input.indexOf("E") != -1;
-        } else {
-            isDecPresent = false;
-            isExpPresent = false;
-        }
-
-        // In state changes
+        // State settings
         if (state == State.normal) {
-            if (isExpPresent) {
-                pointButton.setText(".");
-                pointButton.setEnabled(false);
-            } else {
-                pointButton.setEnabled(true);
-                if (isDecPresent) pointButton.setText("EE");
-                else pointButton.setText(".");
+            // We use a volatile element to show stack errors, so
+            // here we need an additional check to see if it is a
+            // number or an error.
+            if (msgKind != MsgKind.ON_STACK_ERROR) {
+                if (volatile_idx != -1) {
+                    boolean isDecPresent = input.indexOf(".") != -1;
+                    boolean isExpPresent = input.indexOf("E") != -1;
+
+                    if (isExpPresent) {
+                        pointButton.setText(".");
+                        pointButton.setEnabled(false);
+                    } else {
+                        pointButton.setEnabled(true);
+                        if (isDecPresent) pointButton.setText("EE");
+                        else pointButton.setText(".");
+                    }
+                } else {
+                    pointButton.setEnabled(true);
+                    pointButton.setText(".");
+                }
             }
         } else if (state == State.settings) {
             String anglemodestr = anglemode_string(anglemode);
@@ -902,7 +1008,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             cosButton.setText(String.format("Mode: %s", dispmode_string(dispmode)));
             tanButton.setText(String.format("TP: %d", tp_values[tp_idx]));
             lnButton.setText(String.format("DP: %d", dp_values[dp_idx]));
-            logButton.setText(String.format("Vibration: %dms", vibration_millis_values[vibration_millis_idx]));
+            logButton.setText(String.format("Vibr: %dms", vibration_millis_values[vibration_millis_idx]));
             dropButton.setText(String.format("%s", anglemodestr));
             adapter.notifyItemRangeChanged(0, data.size());
 
@@ -911,6 +1017,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
 
         // if Ek.OnStackError then scroll to error position
         stackview.scrollToPosition(data.size() - 1);
+        Log.d("StackSize", String.format("%d", data.size()));
     }
 
     private boolean validateNItemsOnStack(int n) {
@@ -925,18 +1032,18 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     private void pushHistory() {
         History h = new History();
         Stack<ViewModel> dataCopy = new Stack<>();
-        for (ViewModel v: data) {
+        for (ViewModel v : data) {
             dataCopy.push(v.clone());
         }
         h.data = dataCopy;
         h.input = new StringBuffer(input);
-        h.error = error;
+        h.error = msgKind;
         h.volatile_idx = volatile_idx;
         history.push(h);
     }
 
     private void binaryOp(Op op) {
-        if (validatePush() != PushResult.cannot_push && validateNItemsOnStack(2)) {
+        if (pushOk(validatePush()) && validateNItemsOnStack(2)) {
             pushHistory();
             ViewModel n2 = data.pop();
             ViewModel n1 = data.pop();
@@ -993,33 +1100,78 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     private void updateState(State value) {
         state = value;
         if (state == State.normal) {
-            tanButton.setEnabled(true);
             for (int i = 0; i < keygrid.getChildCount(); i++) {
                 final Button b = (Button) keygrid.getChildAt(i);
                 b.setText(HtmlCompat.fromHtml(normal_texts[i], HtmlCompat.FROM_HTML_MODE_LEGACY));
-                b.setTextAppearance(normal_styles[i] ? R.style.CalculatorButtonLargeStyle : R.style.CalculatorButtonSmallStyle);
-                b.setBackgroundTintList(default_button_color);
+                b.setTextAppearance(normal_styles[i] == 0
+                        ? R.style.CalculatorButtonSmallStyle
+                        : normal_styles[i] == 1 ? R.style.CalculatorButtonMediumStyle : R.style.CalculatorButtonLargeStyle);
+                b.setTextColor(default_button_color);
             }
-            shiftButton.setBackgroundTintList(ContextCompat.getColorStateList(this, R.color.dark_green));
-            delButton.setBackgroundTintList(ContextCompat.getColorStateList(this, R.color.deletecolor));
+            shiftButton.setTextColor(ContextCompat.getColorStateList(this, R.color.shift_normal));
+            delButton.setTextColor(ContextCompat.getColorStateList(this, R.color.deletebtn));
+            tanButton.setEnabled(true);
+            logButton.setEnabled(true);
         } else if (state == State.shift) {
             for (int i = 0; i < keygrid.getChildCount(); i++) {
                 final Button b = (Button) keygrid.getChildAt(i);
                 b.setText(HtmlCompat.fromHtml(shift_texts[i], HtmlCompat.FROM_HTML_MODE_LEGACY));
-                b.setTextAppearance(shift_styles[i] ? R.style.CalculatorButtonLargeStyle : R.style.CalculatorButtonSmallStyle);
-                b.setBackgroundTintList(default_button_color);
+                b.setTextAppearance(shift_styles[i] == 0
+                        ? R.style.CalculatorButtonSmallStyle
+                        : shift_styles[i] == 1 ? R.style.CalculatorButtonMediumStyle : R.style.CalculatorButtonLargeStyle);
+                b.setTextColor(default_button_color);
                 if (b.getId() == R.id.point) b.setEnabled(true);
             }
-            shiftButton.setBackgroundTintList(ContextCompat.getColorStateList(this, R.color.green));
-            delButton.setBackgroundTintList(ContextCompat.getColorStateList(this, R.color.deletecolor));
+            shiftButton.setTextColor(ContextCompat.getColorStateList(this, R.color.shift_pressed));
+            delButton.setTextColor(ContextCompat.getColorStateList(this, R.color.deletebtn));
+            if (!clipMgr.hasPrimaryClip())
+                logButton.setEnabled(false);
+            else
+                logButton.setEnabled(clipMgr.getPrimaryClipDescription().hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN));
         } else if (state == State.settings) {
             for (int i = 0; i < keygrid.getChildCount(); i++) {
                 final Button b = (Button) keygrid.getChildAt(i);
                 b.setText(HtmlCompat.fromHtml(settings_texts[i], HtmlCompat.FROM_HTML_MODE_LEGACY));
                 b.setTextAppearance(R.style.CalculatorButtonSmallStyle);
-                b.setBackgroundTintList(ContextCompat.getColorStateList(this, R.color.settingsbuttons));
+                b.setTextColor(ContextCompat.getColorStateList(this, R.color.settingbtns));
             }
+            logButton.setEnabled(true);
         }
+        Log.d("TEXTSIZE", String.format("%f, %f", sinButton.getTextSize(), pointButton.getTextSize()));
+    }
+
+    private int getBigDecimalDigits(BigDecimal b) {
+        if (b.scale() < 0) {
+            return b.precision() + (-b.scale());
+        }
+        return b.precision();
+    }
+
+    private int getBigDecimalDigitsToRight(BigDecimal b) {
+        return Math.max(b.scale(), 0);
+    }
+
+    public String convertNumberToString(BigDecimal b) {
+        b = b.stripTrailingZeros();
+        String text;
+        int constrained_scale = Math.min(getBigDecimalDigitsToRight(b), dp_values[dp_idx]);
+        if (Math.max(getBigDecimalDigits(b) - getBigDecimalDigitsToRight(b) + constrained_scale, constrained_scale) >
+                tp_values[tp_idx]
+                && dispmode == Main.DispMode.sci) {
+            NumberFormat formatter = new DecimalFormat("0.#E0");
+            formatter.setRoundingMode(RoundingMode.HALF_EVEN);
+            formatter.setMaximumFractionDigits(dp_values[dp_idx]);
+            text = formatter.format(b);
+            if (text.endsWith("E0")) {
+                text = text.substring(0, text.length()-2);
+            }
+        } else {
+            //b.setScale(main.dp_values[main.dp_idx], RoundingMode.HALF_EVEN).stripTrailingZeros();
+            NumberFormat formatter = new DecimalFormat("###,###.##");
+            formatter.setMaximumFractionDigits(dp_values[dp_idx]);
+            text = formatter.format(b);
+        }
+        return text;
     }
 
     private void notifyAdapterItemRemoved(int position) {
@@ -1033,13 +1185,19 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     }
 
     private void showPinnedError(final String err) {
-        error = ErrorKind.EK_PINNED_ERROR;
-        errorView.setText(err);
-        errorView.setTextColor(ContextCompat.getColorStateList(this, R.color.errorcolor));
+        msgKind = MsgKind.PINNED_ERROR;
+        msgView.setText(err);
+        msgView.setTextColor(ContextCompat.getColorStateList(this, R.color.msgerror));
+    }
+
+    private void showPinnedInfo(final String info) {
+        msgKind = MsgKind.PINNED_INFO;
+        msgView.setText(info);
+        msgView.setTextColor(ContextCompat.getColorStateList(this, R.color.msginfo));
     }
 
     private void showOnStackError(final String err) {
-        error = ErrorKind.EK_ON_STACK_ERROR;
+        msgKind = MsgKind.ON_STACK_ERROR;
         data.push(null);
         input = new StringBuffer(err);
         volatile_idx = data.size()-1;
@@ -1067,12 +1225,20 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     public enum PushResult {
         nothing_to_push,
         pushed,
-        cannot_push,
+        invalid_item,
+        blank_item,
     }
 
     private PushResult validatePush() {
-        if (volatile_idx == -1) return PushResult.nothing_to_push;
-        else if (input.length() > 0 && input.indexOf("E") < input.length()-1) {
+        if (volatile_idx == -1) {
+            return PushResult.nothing_to_push;
+        } else if (input.length() == 0) {
+            showPinnedError("Fix current blank item first");
+            return PushResult.blank_item;
+        } else if (input.indexOf("E") == input.length() - 1) {
+            showPinnedError("Fix current invalid item first");
+            return PushResult.invalid_item;
+        } else {
             pushHistory();
             if (input.indexOf(".") == 0 || input.indexOf("-.") == 0) {
                 input.insert(input.indexOf("-") != -1 ? 1 : 0, '0');
@@ -1085,30 +1251,50 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
 
             ViewModel m = data.get(volatile_idx);
             String repr = input.toString();
-            if (repr.contains("E-")) {
-                m.latex = repr.replace("E-", "\\text{E-}");
-            } else if (repr.contains("E")) {
-                m.latex = repr.replace("E", "\\text{E}");
-            } else {
-                m.latex = repr;
-            }
+            m.latex = formatInputToLatex(repr);
             m.val = new BigDecimal(repr);
             adapter.notifyItemChanged(volatile_idx);
             input.setLength(0);
             volatile_idx = -1;
             return PushResult.pushed;
         }
-        return PushResult.cannot_push;
+    }
+    
+    private boolean pushOk(PushResult pushResult) {
+        switch (pushResult) {
+            case pushed:
+            case nothing_to_push:
+                return true;
+            case blank_item:
+            case invalid_item:
+            default:
+                return false;
+        }
+    }
+
+    private String formatInputToLatex(String input) {
+        input = input.toUpperCase();
+        if (input.contains("E-")) {
+            input = input.replace("E-", "\\text{E-}");
+        } else if (input.contains("E")) {
+            input = input.replace("E", "\\text{E}");
+        }
+        return input;
     }
 
     private void popAndClearInput() {
         if (validateNItemsOnStack(1)) {
-            pushHistory();
+            if (msgKind != MsgKind.ON_STACK_ERROR) pushHistory();
             data.pop();
             notifyAdapterItemRemoved(data.size() - 1);
             volatile_idx = -1;
             input.setLength(0);
         }
+    }
+
+    private void copyStringToClip(String s) {
+        ClipData clipData = ClipData.newPlainText("", s);
+        clipMgr.setPrimaryClip(clipData);
     }
 
     /**
@@ -1455,7 +1641,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             // cached resources.
             JLatexMathView view = new JLatexMathView(Main.this);
             view.setLatex("\\frac{a}{c}");
-
         }
     }
 
