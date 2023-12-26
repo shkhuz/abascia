@@ -964,7 +964,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 if (history.isEmpty()) {
                     showPinnedError("No previous history");
                 } else {
-                    History h = history.pop();
+                    History h = popHistory();
                     data = h.data;
                     adapter.data = h.data;
                     msgKind = h.error;
@@ -1040,6 +1040,10 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         h.error = msgKind;
         h.volatile_idx = volatile_idx;
         history.push(h);
+    }
+
+    private History popHistory() {
+        return history.pop();
     }
 
     private void binaryOp(Op op) {
@@ -1235,9 +1239,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         } else if (input.length() == 0) {
             showPinnedError("Fix current blank item first");
             return PushResult.blank_item;
-        } else if (input.indexOf("E") == input.length() - 1) {
-            showPinnedError("Fix current invalid item first");
-            return PushResult.invalid_item;
         } else {
             pushHistory();
             if (input.indexOf(".") == 0 || input.indexOf("-.") == 0) {
@@ -1252,7 +1253,14 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
             ViewModel m = data.get(volatile_idx);
             String repr = input.toString();
             m.latex = formatInputToLatex(repr);
-            m.val = new BigDecimal(repr);
+            try {
+                m.val = new BigDecimal(repr);
+            } catch (NumberFormatException e) {
+                showPinnedError("Fix current invalid item first");
+                // Because we pushed history some lines ago
+                popHistory();
+                return PushResult.invalid_item;
+            }
             adapter.notifyItemChanged(volatile_idx);
             input.setLength(0);
             volatile_idx = -1;
