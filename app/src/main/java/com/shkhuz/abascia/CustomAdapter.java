@@ -11,6 +11,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
+import androidx.core.text.HtmlCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.math.BigDecimal;
@@ -43,7 +44,7 @@ public class CustomAdapter extends RecyclerView.Adapter<CustomAdapter.ViewHolder
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         // TODO: disable mathRepr on error
         if (main.volatile_idx == position) {
-            holder.textView.setText(main.input.toString());
+            holder.textView.setText(HtmlCompat.fromHtml(main.input.toString() + "<font color='#66CC77'>&lt;</font>", HtmlCompat.FROM_HTML_MODE_LEGACY), TextView.BufferType.SPANNABLE);
             holder.textView.setTextColor(ContextCompat.getColor(main, android.R.color.white));
             holder.mathView.setVisibility(View.GONE);
         } else {

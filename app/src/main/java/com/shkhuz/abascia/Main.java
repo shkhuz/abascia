@@ -125,6 +125,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     }
 
     private Stack<History> history = new Stack<>();
+    private int currentHistoryIdx = 0;
 
     Conversions convs = new Conversions();
 
@@ -176,7 +177,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
 
     private String[] shift_texts = {
             "&#x2699;"/*gear*/, "", "", "COPY", "PASTE",
-            "", "", "", "", "<big>&#x2093;&#x207F;</big>"/*x^n*/,
+            "", "", "REDO", "", "<big>&#x2093;&#x207F;</big>"/*x^n*/,
             "SHIFT", "<small>&#x2093;&#xb3;</small>"/*x^3*/, "<small>&#x221B;</small>"/*cuberoot*/, "", "",
             "CLR", "", "", "", "",
             "D<br>U<br>P", "&#x3C0;"/*pi*/, "e", "", "",
@@ -330,6 +331,13 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         updateState(State.normal);
         this.clipMgr = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
 
+        History defaultHistory = new History();
+        defaultHistory.data = new Stack<>();
+        defaultHistory.input = new StringBuffer();
+        defaultHistory.error = MsgKind.NONE;
+        defaultHistory.volatile_idx = -1;
+        history.push(defaultHistory);
+
         List<CharSequence> convGroupNamesList = new ArrayList<>();
         try {
             XmlPullParser x = getResources().getXml(R.xml.conv_const_data);
@@ -388,7 +396,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         eula.showIfNotAccepted();
     }
 
-    @SuppressLint("NotifyDataSetChanged")
     public void clickHandler(View view) {
         int vid = view.getId();
 
@@ -442,7 +449,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     }
                 } else if (number == 7) {
                     if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
-                        pushHistory();
                         ViewModel n = data.pop();
                         notifyAdapterItemRemoved(data.size() - 1);
                         try {
@@ -453,13 +459,13 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                             n.val = n.val.pow(3);
                             data.push(n);
                             adapter.notifyItemInserted(data.size() - 1);
+                            pushHistory();
                         } catch (RuntimeException e) {
                             showOnStackError(e.getMessage());
                         }
                     }
                 } else if (number == 8) {
                     if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
-                        pushHistory();
                         ViewModel n = data.pop();
                         notifyAdapterItemRemoved(data.size() - 1);
                         try {
@@ -469,6 +475,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                             n.val = intRoot(n.val, 3, INTERNAL_SCALE);
                             data.push(n);
                             adapter.notifyItemInserted(data.size() - 1);
+                            pushHistory();
                         } catch (RuntimeException e) {
                             showOnStackError(e.getMessage());
                         }
@@ -476,7 +483,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 } else if (number == 0) {
                     State stateAtClick = state;
                     if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
-                        pushHistory();
                         AlertDialog.Builder b = new AlertDialog.Builder(this);
                         b.setTitle("Convert");
                         b.setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
@@ -552,6 +558,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
 
                                                     data.push(n);
                                                     adapter.notifyItemInserted(data.size() - 1);
+                                                    pushHistory();
                                                 } catch (RuntimeException e) {
                                                     showOnStackError(e.getMessage());
                                                 }
@@ -582,7 +589,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         } else if (vid == R.id.sin) {
             if (state == State.normal) {
                 if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
-                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
@@ -598,6 +604,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         }
                         data.push(n);
                         adapter.notifyItemInserted(data.size() - 1);
+                        pushHistory();
                     } catch (RuntimeException e) {
                         showOnStackError(e.getMessage());
                     }
@@ -610,7 +617,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         } else if (vid == R.id.cos) {
             if (state == State.normal) {
                 if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
-                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
@@ -626,6 +632,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         }
                         data.push(n);
                         adapter.notifyItemInserted(data.size() - 1);
+                        pushHistory();
                     } catch (RuntimeException e) {
                         showOnStackError(e.getMessage());
                     }
@@ -641,7 +648,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         } else if (vid == R.id.tan) {
             if (state == State.normal) {
                 if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
-                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
@@ -657,6 +663,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         }
                         data.push(n);
                         adapter.notifyItemInserted(data.size() - 1);
+                        pushHistory();
                     } catch (RuntimeException e) {
                         showOnStackError(e.getMessage());
                     }
@@ -672,7 +679,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         } else if (vid == R.id.ln) {
             if (state == State.normal) {
                 if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
-                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
@@ -683,6 +689,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         n.val = BigDecimalMath.log(n.val, mc);
                         data.push(n);
                         adapter.notifyItemInserted(data.size() - 1);
+                        pushHistory();
                     } catch (RuntimeException e) {
                         showOnStackError(e.getMessage());
                     }
@@ -735,7 +742,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         } else if (vid == R.id.log) {
             if (state == State.normal) {
                 if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
-                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
@@ -746,13 +752,13 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         n.val = BigDecimalMath.log10(n.val, mc);
                         data.push(n);
                         adapter.notifyItemInserted(data.size() - 1);
+                        pushHistory();
                     } catch (RuntimeException e) {
                         showOnStackError(e.getMessage());
                     }
                 }
             } else if (state == State.shift) {
                 if (pushOk(validatePush())) {
-                    pushHistory();
                     ClipData.Item clipItem = Objects.requireNonNull(clipMgr.getPrimaryClip()).getItemAt(0);
                     CharSequence pasteDataRaw = clipItem.getText();
                     if (pasteDataRaw == null) {
@@ -777,6 +783,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                                 data.push(m);
                                 adapter.notifyItemInserted(data.size()-1);
                             }
+                            pushHistory();
                         } catch (NumberFormatException e) {
                             showOnStackError("Paste failed: non-numerical or invalid input provided");
                         }
@@ -795,12 +802,12 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 validatePush();
             } else if (state == State.shift) {
                 if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
-                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size()-1);
                     data.push(n);
                     data.push(n.clone());
                     adapter.notifyItemRangeInserted(data.size()-1, 2);
+                    pushHistory();
                 }
             }
         } else if ((vid == R.id.plus || vid == R.id.minus || vid == R.id.mult || vid == R.id.div)) {
@@ -812,7 +819,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         } else if (vid == R.id.chs) {
             if (state == State.normal) {
                 if (volatile_idx == -1 && validateNItemsOnStack(1)) {
-                    pushHistory();
                     ViewModel n = data.get(data.size()-1);
                     if (n.latex.startsWith("-")) {
                         StringBuilder s = new StringBuilder(n.latex).deleteCharAt(0);
@@ -829,6 +835,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     }
                     n.val = n.val.negate();
                     adapter.notifyItemChanged(data.size()-1);
+                    pushHistory();
                 } else if (volatile_idx != -1) {
                     int idxE = input.indexOf("E");
                     int idxMinus = input.indexOf("-");
@@ -859,18 +866,17 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                     adapter.notifyItemChanged(volatile_idx);
                 }
             } else if (state == State.shift) {
-                // TODO: should we push history even if stack is empty?
-                pushHistory();
                 volatile_idx = -1;
                 data.clear();
                 adapter.notifyItemRangeRemoved(0, data.size());
                 input.setLength(0);
+                // TODO: should we push history even if stack is empty?
+                pushHistory();
             } else if (state == State.settings) {
             }
         } else if (vid == R.id.pow2) {
             if (state == State.normal) {
                 if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
-                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
@@ -881,13 +887,13 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         n.val = n.val.pow(2);
                         data.push(n);
                         adapter.notifyItemInserted(data.size() - 1);
+                        pushHistory();
                     } catch (ArithmeticException e) {
                         showOnStackError(e.getMessage());
                     }
                 }
             } else if (state == State.shift) {
                 if (pushOk(validatePush()) && validateNItemsOnStack(2)) {
-                    pushHistory();
                     // TODO: store viewmodel instead of creating anew
                     ViewModel exp = data.pop();
                     ViewModel n = data.pop();
@@ -907,6 +913,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         n.val = res;
                         data.push(n);
                         adapter.notifyItemInserted(data.size()-1);
+                        pushHistory();
                     } catch (RuntimeException e) {
                         showOnStackError(e.getMessage());
                     }
@@ -916,7 +923,6 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         } else if (vid == R.id.sqrt) {
             if (state == State.normal) {
                 if (pushOk(validatePush()) && validateNItemsOnStack(1)) {
-                    pushHistory();
                     ViewModel n = data.pop();
                     notifyAdapterItemRemoved(data.size() - 1);
                     try {
@@ -926,6 +932,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                         n.val = sqrt(n.val, INTERNAL_SCALE);
                         data.push(n);
                         adapter.notifyItemInserted(data.size() - 1);
+                        pushHistory();
                     } catch (RuntimeException e) {
                         showOnStackError(e.getMessage());
                     }
@@ -948,32 +955,22 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
         } else if (vid == R.id.swap) {
             if (state == State.normal) {
                 if (pushOk(validatePush()) && validateNItemsOnStack(2)) {
-                    pushHistory();
                     ViewModel n1 = data.pop();
                     ViewModel n2 = data.pop();
                     notifyAdapterItemRangeRemoved(data.size() - 2, 2);
                     data.push(n1);
                     data.push(n2);
                     adapter.notifyItemRangeInserted(data.size() - 1, 2);
+                    pushHistory();
                 }
             } else if (state == State.shift) {
             } else if (state == State.settings) {
             }
         } else if (vid == R.id.undo) {
             if (state == State.normal) {
-                if (history.isEmpty()) {
-                    showPinnedError("No previous history");
-                } else {
-                    History h = popHistory();
-                    data = h.data;
-                    adapter.data = h.data;
-                    msgKind = h.error;
-                    input = h.input;
-                    volatile_idx = h.volatile_idx;
-                    adapter.notifyDataSetChanged();
-                    showPinnedInfo("Undid change");
-                }
-
+                goBackInHistory();
+            } else if (state == State.shift) {
+                goForwardInHistory();
             }
         }
 
@@ -1030,25 +1027,128 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
     }
 
     private void pushHistory() {
+
         History h = new History();
         Stack<ViewModel> dataCopy = new Stack<>();
-        for (ViewModel v : data) {
+        for (ViewModel v: data) {
             dataCopy.push(v.clone());
         }
         h.data = dataCopy;
         h.input = new StringBuffer(input);
         h.error = msgKind;
         h.volatile_idx = volatile_idx;
+
+        while (currentHistoryIdx < (int)history.size()-1) {
+            Log.d("History", "POP");
+            history.pop();
+        }
         history.push(h);
+        Log.d("History", String.format("Pushed history number %d (current range 0-%d)", history.size()-1, history.size()-1));
+        currentHistoryIdx = history.size()-1;
     }
 
-    private History popHistory() {
-        return history.pop();
+    private void goBackInHistory() {
+        if (currentHistoryIdx > 0) {
+            currentHistoryIdx -= 1;
+            setHistoryStateTo(currentHistoryIdx);
+            showPinnedInfo("Undid change");
+        } else {
+            showPinnedError("No previous history");
+        }
+    }
+
+    private void deleteLastHistory() {
+        if (currentHistoryIdx > 0) {
+            history.pop();
+            currentHistoryIdx--;
+        }
+    }
+
+    private void goForwardInHistory() {
+        if (currentHistoryIdx < history.size()-1) {
+            currentHistoryIdx++;
+            setHistoryStateTo(currentHistoryIdx);
+            showPinnedInfo("Redid change");
+        } else {
+            showPinnedError("Newest change reached");
+        }
+    }
+
+    @SuppressLint("NotifyDataSetChanged")
+    private void setHistoryStateTo(int idx) {
+        Log.d("History", String.format("History set to idx %d from 0-%d", idx, history.size()-1));
+        History h = history.get(idx);
+        data.clear();
+        for (ViewModel v: h.data) {
+            data.push(v.clone());
+        }
+        adapter.data = data;
+        msgKind = h.error;
+        input.setLength(0);
+        input.append(h.input);
+        volatile_idx = h.volatile_idx;
+        adapter.notifyDataSetChanged();
+    }
+
+    public enum PushResult {
+        nothing_to_push,
+        pushed,
+        invalid_item,
+        blank_item,
+    }
+
+    private PushResult validatePush() {
+        if (volatile_idx == -1) {
+            return PushResult.nothing_to_push;
+        } else if (input.length() == 0) {
+            showPinnedError("Fix current blank item first");
+            return PushResult.blank_item;
+        } else {
+            pushHistory();
+            if (input.indexOf(".") == 0 || input.indexOf("-.") == 0) {
+                input.insert(input.indexOf("-") != -1 ? 1 : 0, '0');
+            }
+            if (input.indexOf(".") == input.length()-1) {
+                input.append('0');
+            }
+
+            int dotExpIdx = input.indexOf(".E");
+            if (dotExpIdx != -1) {
+                input.deleteCharAt(dotExpIdx);
+            }
+
+            ViewModel m = data.get(volatile_idx);
+            String repr = input.toString();
+            m.latex = formatInputToLatex(repr);
+            try {
+                m.val = new BigDecimal(repr);
+            } catch (NumberFormatException e) {
+                showPinnedError("Fix current invalid item first");
+                deleteLastHistory();
+                return PushResult.invalid_item;
+            }
+            adapter.notifyItemChanged(volatile_idx);
+            input.setLength(0);
+            volatile_idx = -1;
+            pushHistory();
+            return PushResult.pushed;
+        }
+    }
+
+    private boolean pushOk(PushResult pushResult) {
+        switch (pushResult) {
+            case pushed:
+            case nothing_to_push:
+                return true;
+            case blank_item:
+            case invalid_item:
+            default:
+                return false;
+        }
     }
 
     private void binaryOp(Op op) {
         if (pushOk(validatePush()) && validateNItemsOnStack(2)) {
-            pushHistory();
             ViewModel n2 = data.pop();
             ViewModel n1 = data.pop();
             notifyAdapterItemRangeRemoved(data.size() - 2, 2);
@@ -1075,6 +1175,7 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
                 }
                 data.push(n1);
                 adapter.notifyItemInserted(data.size() - 1);
+                pushHistory();
             } catch (ArithmeticException e) {
                 showOnStackError("Division by zero");
             }
@@ -1210,73 +1311,19 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
 
     private void addElementIfNonVolatile() {
         if (volatile_idx == -1) {
-            pushHistory();
             data.push(new ViewModel(new BigDecimal("0")));
             adapter.notifyItemInserted(data.size()-1);
             volatile_idx = data.size()-1;
+            pushHistory();
         }
     }
 
     private void addElementIfEmpty() {
         if (data.size() == 0) {
-            pushHistory();
             data.push(new ViewModel(new BigDecimal("0")));
             adapter.notifyItemInserted(data.size()-1);
             volatile_idx = data.size()-1;
-        }
-    }
-
-    public enum PushResult {
-        nothing_to_push,
-        pushed,
-        invalid_item,
-        blank_item,
-    }
-
-    private PushResult validatePush() {
-        if (volatile_idx == -1) {
-            return PushResult.nothing_to_push;
-        } else if (input.length() == 0) {
-            showPinnedError("Fix current blank item first");
-            return PushResult.blank_item;
-        } else {
             pushHistory();
-            if (input.indexOf(".") == 0 || input.indexOf("-.") == 0) {
-                input.insert(input.indexOf("-") != -1 ? 1 : 0, '0');
-            }
-
-            int dotExpIdx = input.indexOf(".E");
-            if (dotExpIdx != -1) {
-                input.deleteCharAt(dotExpIdx);
-            }
-
-            ViewModel m = data.get(volatile_idx);
-            String repr = input.toString();
-            m.latex = formatInputToLatex(repr);
-            try {
-                m.val = new BigDecimal(repr);
-            } catch (NumberFormatException e) {
-                showPinnedError("Fix current invalid item first");
-                // Because we pushed history some lines ago
-                popHistory();
-                return PushResult.invalid_item;
-            }
-            adapter.notifyItemChanged(volatile_idx);
-            input.setLength(0);
-            volatile_idx = -1;
-            return PushResult.pushed;
-        }
-    }
-    
-    private boolean pushOk(PushResult pushResult) {
-        switch (pushResult) {
-            case pushed:
-            case nothing_to_push:
-                return true;
-            case blank_item:
-            case invalid_item:
-            default:
-                return false;
         }
     }
 
@@ -1292,11 +1339,11 @@ public class Main extends AppCompatActivity implements View.OnKeyListener {
 
     private void popAndClearInput() {
         if (validateNItemsOnStack(1)) {
-            if (msgKind != MsgKind.ON_STACK_ERROR) pushHistory();
             data.pop();
             notifyAdapterItemRemoved(data.size() - 1);
             volatile_idx = -1;
             input.setLength(0);
+            if (msgKind != MsgKind.ON_STACK_ERROR) pushHistory();
         }
     }
 
